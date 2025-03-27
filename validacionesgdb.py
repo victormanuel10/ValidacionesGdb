@@ -1,0 +1,427 @@
+# -- coding: utf-8 --
+import os
+import arcpy
+import xlrd
+import xlwt
+import pandas as pd
+import sys
+import Tkinter as tk
+import ttk
+import tkFileDialog 
+import tkMessageBox 
+from Tkinter import Frame
+
+sys.path.append(r'C:\Program Files (x86)\ArcGIS\Desktop10.8\arcpy')
+os.environ['PATH'] = r"C:\Program Files\ArcGIS\Bin;" + os.environ['PATH']
+
+def dividir_npn_en_columnas(npn):
+    """Divide el campo NPN en las columnas especificadas."""
+    return [
+        npn[:2],     # Departamento 
+        npn[2:5],    # Municipio 
+        npn[5:7],    # Zona 
+        npn[7:9],    # Sector 
+        npn[9:11],    # Comuna 
+        npn[11:13],   # Barrio 
+        npn[13:17],  # Manzana o Vereda
+        npn[17:21],  # Terreno o Predios
+        npn[21:22],  # Condición Predio 
+        npn[22:24],  # Edificio 
+        npn[24:26],  # Número Piso 
+        npn[26:30],  # Unidad Predial
+    ]
+
+
+def extraer_tabla_de_gdb_area_construida(gdb_path, tipo_area):
+        """
+        Extrae la tabla de la GDB y la convierte a un DataFrame.
+        
+        Parámetros:
+            gdb_path (str): Ruta a la geodatabase.
+            tipo_area (str): Puede ser "Rural" o cualquier otro valor para determinar la tabla a usar.
+        
+        Retorna:
+            DataFrame de pandas con los datos de la tabla.
+        """
+        # Determinar la tabla según el tipo de área
+        if tipo_area == "Rural":
+            table_name = "r_lc_unidadconstruccion"
+        else:
+            table_name = "u_lc_unidadconstruccion"
+        
+        # Construir la ruta completa de la tabla
+        table_path = os.path.join(gdb_path, table_name)
+        
+        # Comprobar que la tabla existe en la GDB
+        if not arcpy.Exists(table_path):
+            raise Exception("La tabla {} no existe en la geodatabase seleccionada.".format(table_name))
+        
+        # Obtener la lista de campos (excluyendo los de tipo geometría u OID si los hay)
+        fields = [f.name for f in arcpy.ListFields(table_path) if f.type not in ["Geometry", "OID"]]
+        
+        # Extraer los datos utilizando un SearchCursor
+        data = []
+        with arcpy.da.SearchCursor(table_path, fields) as cursor:
+            for row in cursor:
+                # Se asocia cada campo a su valor en la fila
+                data.append(dict(zip(fields, row)))
+        
+        # Convertir la lista de diccionarios a un DataFrame
+        df = pd.DataFrame(data)
+        return df
+    
+class GDBExcelValidator(Frame):
+    def __init__(self, parent):
+        Frame.__init__(self, parent)
+        self.parent = parent
+        self.parent.winfo_toplevel().title("Validación GDB vs Excel")
+
+        # Variables para las rutas de archivos
+        self.gdb_path = tk.StringVar()
+        self.excel_path = tk.StringVar()
+        self.excel_path_bcgs=tk.StringVar()
+        # Se define output_excel como StringVar para poder actualizar la ruta de salida
+        self.output_excel = tk.StringVar()
+
+
+        # Variable para seleccionar entre Rural y Urbano
+        self.tipo_area = tk.StringVar(value="Rural")  # Valor por defecto: Rural
+
+        # Botón para seleccionar la GDB
+        tk.Label(root, text="Seleccionar GDB:").pack()
+        tk.Entry(root, textvariable=self.gdb_path, width=50).pack()
+        tk.Button(root, text="Buscar GDB", command=self.select_gdb).pack()
+
+        # Botón para seleccionar el archivo Excel de entrada
+        tk.Label(root, text="Seleccionar Excel:").pack()
+        tk.Entry(root, textvariable=self.excel_path, width=50).pack()
+        tk.Button(root, text="Buscar Excel", command=self.select_excel).pack()
+        
+        tk.Label(root, text="Seleccionar Excel BCGS:").pack()
+        tk.Entry(root, textvariable=self.excel_path_bcgs, width=50).pack()
+        tk.Button(root, text="Buscar Excel BCGS", command=self.select_excel_bcgs).pack()
+
+        # Radiobuttons para elegir entre Rural y Urbano
+        tk.Label(root, text="Seleccione el tipo de área:").pack()
+        tk.Radiobutton(root, text="Rural", variable=self.tipo_area, value="Rural").pack()
+        tk.Radiobutton(root, text="Urbano", variable=self.tipo_area, value="Urbano").pack()
+
+        # Botón para ejecutar la validación
+        tk.Button(root, text="Ejecutar Validación", command=self.run_validation).pack()
+
+
+
+    def run_validation(self):
+        gdb_path = self.gdb_path.get()
+        excel_path = self.excel_path.get()
+        excel_path_bcgs = self.excel_path_bcgs.get()
+        
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        self.select_output_excel()
+        output_path = self.output_excel.get()
+        if not output_path:
+            tkMessageBox.showerror("Error", "Debe seleccionar una ruta de salida válida antes de continuar.")
+            return
+        if not gdb_path or not excel_path:
+            tkMessageBox.showerror("Error", "Debe seleccionar la GDB y el archivo Excel.")
+            return
+
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+
+        try:
+            wb = xlrd.open_workbook(excel_path)
+            sheet_comparacion = wb.sheet_by_index(0)
+        
+            npn_col_idx = None
+            for i in range(sheet_comparacion.ncols):
+                if sheet_comparacion.cell_value(0, i) == 'Npn':
+                    npn_col_idx = i
+                    break
+
+            if npn_col_idx is None:
+                tkMessageBox.showerror("Error", "La columna 'Npn' no se encuentra en el Excel.")
+                return
+
+            npn_excel = [sheet_comparacion.cell_value(row, npn_col_idx).encode('utf-8') for row in range(1, sheet_comparacion.nrows)]
+            
+            arcpy.env.workspace = gdb_path
+            fields = [field.name for field in arcpy.ListFields(feature_class_path)]
+
+            if 'TERRENO_CODIGO' not in fields:
+                tkMessageBox.showerror("Error", "La columna 'TERRENO_CODIGO' no existe en la Feature Class.")
+                return
+
+            terreno_codigo_gdb = [row[0] for row in arcpy.da.SearchCursor(feature_class_path, ['TERRENO_CODIGO'])]
+
+            diff_terreno_codigo = set(terreno_codigo_gdb) - set(npn_excel)
+            diff_npn_excel = set(npn_excel) - set(terreno_codigo_gdb)
+
+            def filtrar_omisiones(npn_list):
+                return [npn for npn in npn_list if len(npn) >= 30 and (npn[21] != '9' or npn[26:30] == '0000')]
+
+            omisiones_filtradas = filtrar_omisiones(diff_npn_excel)
+
+            # Crear archivo Excel
+            workbook = xlwt.Workbook()
+            sheet_comisiones = workbook.add_sheet('Comisiones')
+            sheet_omisiones = workbook.add_sheet('Omisiones')
+            sheet_diferencias = workbook.add_sheet('Diferencia Areas Construidas')
+            sheet_duplicados = workbook.add_sheet('Npn Duplicados')
+            sheet_ph_sin_unidad = workbook.add_sheet('sheet_ph_sin_unidad')
+
+            headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
+                    "Terreno o Predios", "Condición Predio", "Edificio", "Número Piso", "Unidad Predial"]
+            
+            bold_style = xlwt.XFStyle()
+            bold_font = xlwt.Font()
+            bold_font.bold = True
+            bold_style.font = bold_font
+            sheet_comisiones.panes_frozen = True  
+            sheet_comisiones.horz_split_pos = 1 
+            sheet_omisiones.panes_frozen = True  
+            sheet_omisiones.horz_split_pos = 1
+
+            column_widths = [len(header) for header in headers]
+
+            for col_num, header in enumerate(headers):
+                sheet_comisiones.write(0, col_num, header.decode('utf-8'), bold_style)
+                sheet_omisiones.write(0, col_num, header.decode('utf-8'), bold_style)
+
+            for row_num, npn in enumerate(diff_terreno_codigo, 1):
+                columnas = dividir_npn_en_columnas(npn)
+                valores_fila = [npn] + columnas  
+
+                for col_num, valor in enumerate(valores_fila):
+                    valor = valor.decode('utf-8')
+                    sheet_comisiones.write(row_num, col_num, valor)
+                    column_widths[col_num] = max(column_widths[col_num], len(valor))
+
+            for row_num, npn in enumerate(omisiones_filtradas, 1):
+                columnas = dividir_npn_en_columnas(npn)
+                valores_fila = [npn] + columnas  
+
+                for col_num, valor in enumerate(valores_fila):
+                    valor = valor.decode('utf-8')
+                    sheet_omisiones.write(row_num, col_num, valor)
+                    column_widths[col_num] = max(column_widths[col_num], len(valor))
+
+            for col_num, width in enumerate(column_widths):
+                sheet_comisiones.col(col_num).width = (width + 2) * 256  
+                sheet_omisiones.col(col_num).width = (width + 2) * 256  
+
+            df_diferencias_areas_construidas=self.calcular_areas_construidas()
+            npn_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
+            ph_sin_unidad = self.validar_ph_sin_unidad_predial(gdb_path)
+            df_npns_duplicados = pd.DataFrame(npn_duplicados, columns=["TERRENO_CODIGO_Duplicado"])
+            df_ph_sin_unidad = pd.DataFrame(ph_sin_unidad, columns=["sheet_ph_sin_unidad"])
+            
+            for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
+                    sheet_diferencias.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir los datos de diferencias de áreas construidas
+            for row_num, row in enumerate(df_diferencias_areas_construidas.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_diferencias.write(row_num, col_num, str(value).decode('utf-8'))
+
+            # Escribir los encabezados de la lista de duplicados
+            for col_num, column in enumerate(df_npns_duplicados.columns):
+                sheet_duplicados.write(0, len(df_npns_duplicados.columns) + col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir los datos de códigos de terreno duplicados
+            for row_num, row in enumerate(df_npns_duplicados.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_duplicados.write(row_num, len(df_npns_duplicados.columns) + col_num, str(value).decode('utf-8'))
+
+
+            for col_num, column in enumerate(df_ph_sin_unidad.columns):
+                sheet_ph_sin_unidad.write(0, len(df_ph_sin_unidad.columns) + col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir los datos de códigos de terreno duplicados
+            for row_num, row in enumerate(df_ph_sin_unidad.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_ph_sin_unidad.write(row_num, len(df_ph_sin_unidad.columns) + col_num, str(value).decode('utf-8'))
+                    
+            workbook.save(output_path)
+            
+            tkMessageBox.showinfo("Éxito".decode('utf-8'), u"Proceso finalizado correctamente.\nArchivos guardados en:\n" +
+                                output_path.decode('utf-8'))
+
+        except Exception as e:
+            tkMessageBox.showerror("Error", str(e))
+
+    
+    def calcular_areas_construidas(self):
+        # Validar rutas
+        gdb_path = self.gdb_path.get()
+        excel_path = self.excel_path.get()
+
+        if not excel_path:
+            tkMessageBox.showerror("Error", "Debe seleccionar el Excel para calcular áreas.")
+            return
+
+        if not gdb_path.endswith(".gdb"):
+            gdbs = [f for f in os.listdir(gdb_path) if f.endswith(".gdb")]
+            if gdbs:
+                gdb_path = os.path.join(gdb_path, gdbs[0])
+            else:
+                tkMessageBox.showerror("Error", "No se encontró ninguna GDB en la carpeta seleccionada.")
+                return
+
+        # Configurar entorno ArcPy
+        arcpy.env.workspace = gdb_path
+        arcpy.env.overwriteOutput = True
+        print("\nGDB seleccionada: {}".format(gdb_path))
+
+        # Extraer datos de la GDB
+        df_unidadconstruccion = extraer_tabla_de_gdb_area_construida(gdb_path, self.tipo_area.get())
+        print(df_unidadconstruccion)
+        # Leer el archivo Excel
+        xl = pd.ExcelFile(excel_path)
+
+        # Buscar la hoja 'Construcciones' y 'Fichas'
+        hoja_construcciones = next((h for h in xl.sheet_names if "construcciones" in h.strip().lower()), None)
+        hoja_fichas = next((h for h in xl.sheet_names if "fichas" in h.strip().lower()), None)
+
+        if not hoja_construcciones or not hoja_fichas:
+            tkMessageBox.showerror("Error", "No se encontró la hoja 'Construcciones' o 'Fichas' en el archivo.")
+            return
+
+        try:
+            df_construcciones = pd.read_excel(excel_path, sheetname=hoja_construcciones)
+            df_fichas = pd.read_excel(excel_path, sheetname=hoja_fichas)
+
+            df_fichas = pd.merge(df_fichas, df_construcciones[['NroFicha', 'AreaConstruida']], on='NroFicha', how='left')
+            
+            if 'Npn' not in df_fichas.columns or 'AreaConstruida' not in df_fichas.columns:
+                tkMessageBox.showerror("Error", "No se encontraron las columnas 'Npn' o 'AreaConstruida' en la hoja Fichas.")
+                return
+
+
+        except Exception as e:
+            tkMessageBox.showerror("Error", "No se pudo leer las hojas del Excel:\n{}".format(str(e)))
+            return
+
+        # Agrupar datos por los primeros 22 caracteres del identificador
+        df_agrupado_gdb = df_unidadconstruccion.groupby(
+            df_unidadconstruccion['CODIGO_UNIDAD_CONSTRUCCION'].astype(str).str[:22]
+        )['SHAPE_Area'].sum().reset_index().rename(columns={'SHAPE_Area': 'Area_GDB'})
+
+        df_agrupado_excel = df_fichas.groupby(
+            df_fichas['Npn'].astype(str).str[:22]
+        )['AreaConstruida'].sum().reset_index().rename(columns={'AreaConstruida': 'Area_Excel'})
+
+        # Fusionar los DataFrames agrupados
+        df_comparacion = pd.merge(df_agrupado_gdb, df_agrupado_excel, left_on='CODIGO_UNIDAD_CONSTRUCCION', right_on='Npn', how='inner')
+
+        # Calcular diferencia
+        df_comparacion['Diferencia'] = abs(df_comparacion['Area_GDB'] - df_comparacion['Area_Excel'])
+
+        # Filtrar diferencias significativas (> 20)
+        #df_diferencias = df_comparacion[df_comparacion['Diferencia']]
+        return df_comparacion
+
+
+    def validar_terreno_codigo_duplicado(self, gdb_path):
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(feature_class_path):
+            tkMessageBox.showerror("Error", "La capa {feature_class_name} no existe en la GDB.")
+            return
+
+        fields = [field.name for field in arcpy.ListFields(feature_class_path)]
+        
+        if "TERRENO_CODIGO" not in fields:
+            tkMessageBox.showerror("Error", "La columna 'TERRENO_CODIGO' no existe en la Feature Class.")
+            return
+
+        # Leer los valores de TERRENO_CODIGO y contar duplicados
+        terreno_codigos = [row[0] for row in arcpy.da.SearchCursor(feature_class_path, ["TERRENO_CODIGO"])]
+
+        # Encontrar duplicados
+        contador_codigos = {}
+        for codigo in terreno_codigos:
+            contador_codigos[codigo] = contador_codigos.get(codigo, 0) + 1
+
+        duplicados = [codigo for codigo, count in contador_codigos.items() if count > 1]
+
+        if duplicados:
+            tkMessageBox.showwarning("Advertencia", "Se encontraron {len(duplicados)} códigos de terreno duplicados.")
+            return duplicados
+        else:
+            tkMessageBox.showinfo("Validación Exitosa", "No se encontraron códigos de terreno duplicados.")
+            return []
+        
+
+    def validar_ph_sin_unidad_predial(self, gdb_path):
+        feature_class_name = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(feature_class_path):
+            tkMessageBox.showerror("Error", "La capa {feature_class_name} no existe en la GDB.")
+            return
+
+        fields = [field.name for field in arcpy.ListFields(feature_class_path)]
+        
+        if "CODIGO_UNIDAD_CONSTRUCCION" not in fields:
+            tkMessageBox.showerror("Error", "La columna 'CODIGO_UNIDAD_CONSTRUCCION' no existe en la Feature Class.")
+            return
+
+        # Leer los valores de CODIGO_UNIDAD_CONSTRUCCION
+        UnidadConstruccion = [row[0] for row in arcpy.da.SearchCursor(feature_class_path, ["CODIGO_UNIDAD_CONSTRUCCION"])]
+
+        # Filtrar por los primeros 22 caracteres y verificar el dígito 22
+        codigos_filtrados = [codigo[:22] for codigo in UnidadConstruccion if len(codigo) >= 22 and codigo[21] in ('9', '8')]
+
+        # Contar ocurrencias
+        contador_codigos = {}
+        for codigo in codigos_filtrados:
+            contador_codigos[codigo] = contador_codigos.get(codigo, 0) + 1
+
+        # Obtener los códigos sin duplicados
+        sin_duplicados = [codigo for codigo, count in contador_codigos.items() if count == 1]
+
+        return sin_duplicados
+
+
+    def select_gdb(self):
+        path = tkFileDialog.askdirectory(title="Seleccionar Geodatabase (GDB)")
+        if path:
+            self.gdb_path.set(path)
+
+    def select_excel(self):
+        path = tkFileDialog.askopenfilename(title="Seleccionar Archivo Excel", 
+                                             filetypes=[("Excel files", ".xlsx;.xls")])
+        if path:
+            self.excel_path.set(path)
+    
+    def select_excel_bcgs(self):
+        path = tkFileDialog.askopenfilename(title="Seleccionar Archivo Excel BCGS", 
+                                             filetypes=[("Excel files", ".xlsx;.xls")])
+        if path:
+            self.excel_path_bcgs.set(path)
+
+    def select_output_excel(self):
+        # Permite al usuario seleccionar la ruta y nombre del archivo de salida.
+        path = tkFileDialog.asksaveasfilename(
+            title="Guardar archivo Excel",
+            defaultextension=".xls",
+            filetypes=[("Excel files", "*.xls;*.xlsx")]
+        )
+        
+        if path:  # Solo actualizar si el usuario seleccionó un archivo
+            self.output_excel.set(path)
+        else:
+            tkMessageBox.showerror("Error", "Debe seleccionar una ruta de salida válida.")
+
+
+        
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = GDBExcelValidator(root)
+    root.mainloop()
