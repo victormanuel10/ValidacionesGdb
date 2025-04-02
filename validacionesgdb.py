@@ -6,7 +6,6 @@ import xlwt
 import pandas as pd
 import sys
 import Tkinter as tk
-import ttk
 import tkFileDialog 
 import tkMessageBox 
 from Tkinter import Frame
@@ -167,8 +166,10 @@ class GDBExcelValidator(Frame):
             sheet_omisiones = workbook.add_sheet('Omisiones')
             sheet_diferencias = workbook.add_sheet('Diferencia Areas Construidas')
             sheet_duplicados = workbook.add_sheet('Npn Duplicados')
-            sheet_ph_sin_unidad = workbook.add_sheet('sheet_ph_sin_unidad')
-
+            sheet_ph_sin_unidad = workbook.add_sheet('PH sin Unidad Predial')
+            sheet_terreno_nro_piso = workbook.add_sheet('Terreno con Nro Piso')
+            sheet_informalidades_sin_predio_formal = workbook.add_sheet('Informalidades Sin P')
+                
             headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
                     "Terreno o Predios", "Condición Predio", "Edificio", "Número Piso", "Unidad Predial"]
             
@@ -212,8 +213,15 @@ class GDBExcelValidator(Frame):
             df_diferencias_areas_construidas=self.calcular_areas_construidas()
             npn_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
             ph_sin_unidad = self.validar_ph_sin_unidad_predial(gdb_path)
+            terreno_con_nro_piso= self.validar_terreno_con_piso(gdb_path)
+
+            df_terreno_con_nro_piso = pd.DataFrame(terreno_con_nro_piso, columns=["TERRENO_CODIGO_Con_Nro_Piso"])
             df_npns_duplicados = pd.DataFrame(npn_duplicados, columns=["TERRENO_CODIGO_Duplicado"])
-            df_ph_sin_unidad = pd.DataFrame(ph_sin_unidad, columns=["sheet_ph_sin_unidad"])
+            df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
+            
+            self.validar_npn__unidad_diferent_de_terreno(gdb_path)
+
+            df_ph_sin_unidad = pd.DataFrame(ph_sin_unidad, columns=["PH sin unidad predial"])
             
             for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
                     sheet_diferencias.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -222,6 +230,14 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_diferencias_areas_construidas.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_diferencias.write(row_num, col_num, str(value).decode('utf-8'))
+
+            for col_num, column in enumerate(df_terreno_con_nro_piso.columns):
+                    sheet_terreno_nro_piso.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir los datos de diferencias de áreas construidas
+            for row_num, row in enumerate(df_terreno_con_nro_piso.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_terreno_nro_piso.write(row_num, col_num, str(value).decode('utf-8'))
 
             # Escribir los encabezados de la lista de duplicados
             for col_num, column in enumerate(df_npns_duplicados.columns):
@@ -240,7 +256,15 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_ph_sin_unidad.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_ph_sin_unidad.write(row_num, len(df_ph_sin_unidad.columns) + col_num, str(value).decode('utf-8'))
-                    
+
+            for col_num, column in enumerate(df_informalidades_sin_predio_formal.columns): 
+                sheet_informalidades_sin_predio_formal.write(0, len(df_informalidades_sin_predio_formal.columns) + col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir los datos de códigos de terreno duplicados
+            for row_num, row in enumerate(df_informalidades_sin_predio_formal.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_informalidades_sin_predio_formal.write(row_num, len(df_informalidades_sin_predio_formal.columns) + col_num, str(value).decode('utf-8'))
+            
             workbook.save(output_path)
             
             tkMessageBox.showinfo("Éxito".decode('utf-8'), u"Proceso finalizado correctamente.\nArchivos guardados en:\n" +
@@ -274,7 +298,7 @@ class GDBExcelValidator(Frame):
 
         # Extraer datos de la GDB
         df_unidadconstruccion = extraer_tabla_de_gdb_area_construida(gdb_path, self.tipo_area.get())
-        print(df_unidadconstruccion)
+        #print(df_unidadconstruccion)
         # Leer el archivo Excel
         xl = pd.ExcelFile(excel_path)
 
@@ -348,10 +372,10 @@ class GDBExcelValidator(Frame):
         duplicados = [codigo for codigo, count in contador_codigos.items() if count > 1]
 
         if duplicados:
-            tkMessageBox.showwarning("Advertencia", "Se encontraron {len(duplicados)} códigos de terreno duplicados.")
+            #tkMessageBox.showwarning("Advertencia", "Se encontraron {len(duplicados)} códigos de terreno duplicados.")
             return duplicados
         else:
-            tkMessageBox.showinfo("Validación Exitosa", "No se encontraron códigos de terreno duplicados.")
+            #tkMessageBox.showinfo("Validación Exitosa", "No se encontraron códigos de terreno duplicados.")
             return []
         
 
@@ -384,10 +408,164 @@ class GDBExcelValidator(Frame):
 
         # Obtener los códigos sin duplicados
         sin_duplicados = [codigo for codigo, count in contador_codigos.items() if count == 1]
+        
+        
+        return sin_duplicados if sin_duplicados else ["NO HAY REGLAMENTOS"]
 
-        return sin_duplicados
+    def validar_terreno_con_piso(self, gdb_path):
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
 
+        arcpy.env.workspace = gdb_path
 
+        if not arcpy.Exists(feature_class_path):
+            tkMessageBox.showerror("Error", "La capa {feature_class_name} no existe en la GDB.")
+            return []
+
+        fields = [field.name for field in arcpy.ListFields(feature_class_path)]
+
+        if "TERRENO_CODIGO" not in fields:
+            tkMessageBox.showerror("Error", "La columna 'TERRENO_CODIGO' no existe en la Feature Class.")
+            return []
+
+        try:
+            with arcpy.da.SearchCursor(feature_class_path, ["TERRENO_CODIGO"]) as cursor:
+                terreno_codigos = [row[0] for row in cursor if row[0] and isinstance(row[0], str) and len(row[0]) >= 30]
+
+            # Filtrar códigos que cumplen ambas condiciones
+            codigos_validos = [
+                codigo for codigo in terreno_codigos
+                if codigo[21] == '0' and sum(int(d) for d in codigo[-4:]) != 0
+            ]
+
+            return codigos_validos
+
+        except Exception as e:
+            tkMessageBox.showerror("Error", "Error al procesar los datos: {str(e)}")
+            return []
+
+    def copiar_filtrar_buffer_y_join(self, gdb_path):
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(feature_class_path):
+            tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name))
+            return None  
+
+        # Definir rutas de salida
+        formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado")
+        informal_filtrado_fc = os.path.join(gdb_path, "informal_filtrado")
+        informal_buffer_fc = os.path.join(gdb_path, "informal_buffer")
+        join_output_fc = os.path.join(gdb_path, "informal_buffer_joined")
+
+        try:
+            # Copiar y filtrar 'formal' (donde el 22° dígito de TERRENO_CODIGO no es '2')
+            query_formal = "SUBSTRING(TERRENO_CODIGO, 22, 1) <> '2'"
+            arcpy.MakeFeatureLayer_management(feature_class_path, "formal_layer", query_formal)
+            arcpy.CopyFeatures_management("formal_layer", formal_filtrado_fc)
+            #print("Capa 'formal' filtrada y guardada.")
+
+            # Copiar y filtrar 'informal' (donde el 22° dígito de TERRENO_CODIGO es '2')
+            query_informal = "SUBSTRING(TERRENO_CODIGO, 22, 1) = '2'"
+            arcpy.MakeFeatureLayer_management(feature_class_path, "informal_layer", query_informal)
+            arcpy.CopyFeatures_management("informal_layer", informal_filtrado_fc)
+            #print("Capa 'informal' filtrada y guardada.")
+
+            # Aplicar buffer negativo de -0.5 metros
+            buffer_distancia = "-0.5 Meters"
+            arcpy.Buffer_analysis(informal_filtrado_fc, informal_buffer_fc, buffer_distancia, 
+                                line_side="FULL", line_end_type="ROUND", dissolve_option="NONE", method="PLANAR")
+            #print("Buffer de -0.5 metros aplicado con éxito a la capa 'informal'.")
+
+            # Realizar Spatial Join entre informal_buffer y formal_filtrado
+            arcpy.SpatialJoin_analysis(target_features=informal_buffer_fc,
+                                    join_features=formal_filtrado_fc,
+                                    out_feature_class=join_output_fc,
+                                    join_operation="JOIN_ONE_TO_ONE",
+                                    join_type="KEEP_ALL",
+                                    match_option="INTERSECT")
+            #print("Spatial Join completado con éxito.")
+
+            # Filtrar la tabla resultante donde TERRENO_CODIGO_1 es NULL
+            query_filtro = "TERRENO_CODIGO_1 IS NULL"
+            arcpy.MakeFeatureLayer_management(join_output_fc, "filtered_layer", query_filtro)
+
+            # Convertir la tabla filtrada en un DataFrame
+            fields = [field.name for field in arcpy.ListFields(join_output_fc)]
+            data = [list(row) for row in arcpy.da.SearchCursor("filtered_layer", fields)] if arcpy.Exists("filtered_layer") else []
+            df = pd.DataFrame(data, columns=fields)
+            df = df[['TERRENO_CODIGO']]
+           
+            if df.empty:
+                print("Advertencia: el DataFrame está vacío después del filtro.")
+
+            return df  
+
+        except Exception as e:
+            tkMessageBox.showerror("Error", "No se pudo procesar: {}".format(str(e)))
+            print("Error:", e)
+            return None
+        
+
+    def validar_npn__unidad_diferent_de_terreno(self, gdb_path):
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+        feature_class_name_unidad = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
+        feature_class_path_unidad = os.path.join(gdb_path, feature_class_name_unidad)
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(feature_class_path):
+            tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name))
+            return None  
+
+        # Definir rutas de salida
+        formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado")
+        informal_filtrado_fc = os.path.join(gdb_path, "informal_filtrado")
+        informal_dissolve_fc = os.path.join(gdb_path, "informal_dissolved1")
+        clip_output_fc = os.path.join(gdb_path, "unico_clip")
+        clip_layer = os.path.join(gdb_path, "capa_recorte")
+        merge_output_fc = os.path.join(gdb_path, "unico")
+
+        try:
+            # Verificar y eliminar capas existentes
+            for fc in [formal_filtrado_fc, informal_filtrado_fc, informal_dissolve_fc, clip_output_fc, merge_output_fc]:
+                if arcpy.Exists(fc):
+                    arcpy.Delete_management(fc)
+
+            # Ejecutar Merge
+            arcpy.Merge_management([feature_class_path], merge_output_fc)
+            print("Merge completado: ", merge_output_fc)
+
+            # Filtrar 'formal' (donde el 22° dígito de TERRENO_CODIGO no es '2')
+            query_formal = "SUBSTRING(TERRENO_CODIGO, 22, 1) <> '2'"
+            arcpy.MakeFeatureLayer_management(feature_class_path, "formal_layer", query_formal)
+            arcpy.CopyFeatures_management("formal_layer", formal_filtrado_fc)
+
+            # Filtrar 'informal' (donde el 22° dígito de TERRENO_CODIGO es '2')
+            query_informal = "SUBSTRING(TERRENO_CODIGO, 22, 1) = '2'"
+            arcpy.MakeFeatureLayer_management(feature_class_path, "informal_layer", query_informal)
+            arcpy.CopyFeatures_management("informal_layer", informal_filtrado_fc)
+
+            # Ejecutar Clip
+            
+
+            # Ejecutar Dissolve
+            campos_dissolve = ["DIMENSION"] if "DIMENSION" in [f.name for f in arcpy.ListFields(informal_filtrado_fc)] else None
+            arcpy.Dissolve_management(informal_filtrado_fc, informal_dissolve_fc, campos_dissolve)
+            print("Dissolve completado: ", informal_dissolve_fc)
+            if arcpy.Exists(informal_dissolve_fc) and int(arcpy.GetCount_management(informal_dissolve_fc)[0]) > 0:
+                    arcpy.Erase_analysis(merge_output_fc, informal_dissolve_fc, clip_output_fc)
+                    print("Erase completado: ", clip_output_fc)
+            else:
+                print("Advertencia: 'informal_dissolved1' no tiene datos o no existe, se omite el Erase.")
+            arcpy.Append_management(informal_filtrado_fc, clip_output_fc, "NO_TEST")
+            print("Datos de 'informal_filtrado' copiados a 'unico'.")
+        except Exception as e:
+            tkMessageBox.showerror("Error", "No se pudo procesar: {}".format(str(e)))
+            print("Error:", e)
+            return None
     def select_gdb(self):
         path = tkFileDialog.askdirectory(title="Seleccionar Geodatabase (GDB)")
         if path:
