@@ -169,7 +169,9 @@ class GDBExcelValidator(Frame):
             sheet_ph_sin_unidad = workbook.add_sheet('PH sin Unidad Predial')
             sheet_terreno_nro_piso = workbook.add_sheet('Terreno con Nro Piso')
             sheet_informalidades_sin_predio_formal = workbook.add_sheet('Informalidades Sin P')
-                
+            sheet_npn__unidad_diferente_de_terreno = workbook.add_sheet('Npn Unidad Dif De Terreno')
+            sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
+            
             headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
                     "Terreno o Predios", "Condición Predio", "Edificio", "Número Piso", "Unidad Predial"]
             
@@ -214,13 +216,13 @@ class GDBExcelValidator(Frame):
             npn_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
             ph_sin_unidad = self.validar_ph_sin_unidad_predial(gdb_path)
             terreno_con_nro_piso= self.validar_terreno_con_piso(gdb_path)
-
+            
             df_terreno_con_nro_piso = pd.DataFrame(terreno_con_nro_piso, columns=["TERRENO_CODIGO_Con_Nro_Piso"])
             df_npns_duplicados = pd.DataFrame(npn_duplicados, columns=["TERRENO_CODIGO_Duplicado"])
             df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
+            df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
+            df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
             
-            self.validar_npn__unidad_diferent_de_terreno(gdb_path)
-
             df_ph_sin_unidad = pd.DataFrame(ph_sin_unidad, columns=["PH sin unidad predial"])
             
             for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
@@ -265,6 +267,23 @@ class GDBExcelValidator(Frame):
                 for col_num, value in enumerate(row):
                     sheet_informalidades_sin_predio_formal.write(row_num, len(df_informalidades_sin_predio_formal.columns) + col_num, str(value).decode('utf-8'))
             
+
+            for col_num, column in enumerate(df_npn__unidad_diferente_de_terreno.columns): 
+                sheet_npn__unidad_diferente_de_terreno.write(0, len(df_npn__unidad_diferente_de_terreno.columns) + col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir los datos de códigos de terreno duplicados
+            for row_num, row in enumerate(df_npn__unidad_diferente_de_terreno.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_npn__unidad_diferente_de_terreno.write(row_num, len(df_npn__unidad_diferente_de_terreno.columns) + col_num, str(value).decode('utf-8'))
+            
+            for col_num, column in enumerate(df_npn__construccion_diferente_de_terreno.columns): 
+                sheet_npn__construccion_diferente_de_terreno.write(0, len(df_npn__construccion_diferente_de_terreno.columns) + col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir los datos de códigos de terreno duplicados
+            for row_num, row in enumerate(df_npn__construccion_diferente_de_terreno.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_npn__construccion_diferente_de_terreno.write(row_num, len(df_npn__construccion_diferente_de_terreno.columns) + col_num, str(value).decode('utf-8'))
+
             workbook.save(output_path)
             
             tkMessageBox.showinfo("Éxito".decode('utf-8'), u"Proceso finalizado correctamente.\nArchivos guardados en:\n" +
@@ -509,34 +528,44 @@ class GDBExcelValidator(Frame):
             return None
         
 
-    def validar_npn__unidad_diferent_de_terreno(self, gdb_path):
+    def validar_npn__unidad_diferente_de_terreno(self, gdb_path):
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
         feature_class_path = os.path.join(gdb_path, feature_class_name)
         feature_class_name_unidad = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
         feature_class_path_unidad = os.path.join(gdb_path, feature_class_name_unidad)
+
         arcpy.env.workspace = gdb_path
 
         if not arcpy.Exists(feature_class_path):
             tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name))
             return None  
+        
+        if not arcpy.Exists(feature_class_path_unidad):
+            tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name_unidad))
+            return None  
 
         # Definir rutas de salida
+        unidad_puntos_fc = os.path.join(gdb_path, "unidad_puntos")
         formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado")
         informal_filtrado_fc = os.path.join(gdb_path, "informal_filtrado")
         informal_dissolve_fc = os.path.join(gdb_path, "informal_dissolved1")
-        clip_output_fc = os.path.join(gdb_path, "unico_clip")
-        clip_layer = os.path.join(gdb_path, "capa_recorte")
+        erase_output_fc = os.path.join(gdb_path, "unico_clip")
         merge_output_fc = os.path.join(gdb_path, "unico")
-
+        intersect_output_fc = os.path.join(gdb_path, "interseccion_unidad")
+        intersect_output_fc_filtro= os.path.join(gdb_path, "interseccion_unidad_filtro")
         try:
             # Verificar y eliminar capas existentes
-            for fc in [formal_filtrado_fc, informal_filtrado_fc, informal_dissolve_fc, clip_output_fc, merge_output_fc]:
+            for fc in [unidad_puntos_fc, formal_filtrado_fc, informal_filtrado_fc, informal_dissolve_fc, erase_output_fc, merge_output_fc, intersect_output_fc]:
                 if arcpy.Exists(fc):
                     arcpy.Delete_management(fc)
 
-            # Ejecutar Merge
-            arcpy.Merge_management([feature_class_path], merge_output_fc)
-            print("Merge completado: ", merge_output_fc)
+            # **Convertir la capa de unidad de construcción en puntos**
+            arcpy.FeatureToPoint_management(feature_class_path_unidad, unidad_puntos_fc, "INSIDE")
+            print("Feature To Point completado: ", unidad_puntos_fc)
+
+            # Ejecutar Merge (terreno y unidades de construcción en puntos)
+            arcpy.CopyFeatures_management(feature_class_path, merge_output_fc)
+            print("Copia de terreno completada: ", merge_output_fc)
 
             # Filtrar 'formal' (donde el 22° dígito de TERRENO_CODIGO no es '2')
             query_formal = "SUBSTRING(TERRENO_CODIGO, 22, 1) <> '2'"
@@ -548,24 +577,182 @@ class GDBExcelValidator(Frame):
             arcpy.MakeFeatureLayer_management(feature_class_path, "informal_layer", query_informal)
             arcpy.CopyFeatures_management("informal_layer", informal_filtrado_fc)
 
-            # Ejecutar Clip
-            
-
-            # Ejecutar Dissolve
+            # Ejecutar Dissolve si el campo DIMENSION existe
             campos_dissolve = ["DIMENSION"] if "DIMENSION" in [f.name for f in arcpy.ListFields(informal_filtrado_fc)] else None
             arcpy.Dissolve_management(informal_filtrado_fc, informal_dissolve_fc, campos_dissolve)
             print("Dissolve completado: ", informal_dissolve_fc)
+
+            # Ejecutar Erase (descartar áreas de intersección)
             if arcpy.Exists(informal_dissolve_fc) and int(arcpy.GetCount_management(informal_dissolve_fc)[0]) > 0:
-                    arcpy.Erase_analysis(merge_output_fc, informal_dissolve_fc, clip_output_fc)
-                    print("Erase completado: ", clip_output_fc)
+                arcpy.Erase_analysis(merge_output_fc, informal_dissolve_fc, erase_output_fc)
+                print("Erase completado: ", erase_output_fc)
             else:
                 print("Advertencia: 'informal_dissolved1' no tiene datos o no existe, se omite el Erase.")
-            arcpy.Append_management(informal_filtrado_fc, clip_output_fc, "NO_TEST")
-            print("Datos de 'informal_filtrado' copiados a 'unico'.")
+                erase_output_fc = merge_output_fc  # Si no hay intersecciones, usa el merge original
+
+            # Agregar datos de 'informal_filtrado' al resultado final
+            if arcpy.Exists(informal_filtrado_fc) and int(arcpy.GetCount_management(informal_filtrado_fc)[0]) > 0:
+                arcpy.Append_management(informal_filtrado_fc, erase_output_fc, "NO_TEST")
+                print("Datos de 'informal_filtrado' copiados a 'unico'.")
+            else:
+                print("Advertencia: 'informal_filtrado' no tiene datos, se omite el Append.")
+
+            # **Ejecutar Intersección entre erase_output_fc y unidad_puntos_fc**
+            if arcpy.Exists(feature_class_path) and arcpy.Exists(unidad_puntos_fc):
+        # **Ejecutar Intersección entre erase_output_fc y unidad_puntos_fc**
+                arcpy.Intersect_analysis([unidad_puntos_fc,erase_output_fc], intersect_output_fc, "ALL", "", "INPUT")
+                print("Intersección completada:", intersect_output_fc)
+            else:
+                print("Error: Una de las capas no existe, intersección omitida.")
+            arcpy.AddField_management(intersect_output_fc, "CP_U", "TEXT", field_length = 1)
+            arcpy.AddField_management(intersect_output_fc, "EDIFICIO_UNIDAD", "TEXT", field_length = 8)
+            arcpy.AddField_management(intersect_output_fc, "TERRENO_22", "TEXT", field_length = 22)
+            arcpy.AddField_management(intersect_output_fc, "UNIDAD_22", "TEXT", field_length = 22)
+            arcpy.AddField_management(intersect_output_fc, "DIFERENCIA", "LONG")
+
+
+            arcpy.CalculateField_management(intersect_output_fc, "CP_U", "Mid([CODIGO_UNIDAD_CONSTRUCCION], 22, 1)", "VB")
+            arcpy.CalculateField_management(intersect_output_fc, "EDIFICIO_UNIDAD", "Right([CODIGO_UNIDAD_CONSTRUCCION],8)", "VB")
+            arcpy.CalculateField_management(intersect_output_fc, "TERRENO_22", "Left([TERRENO_CODIGO],22)", "VB")
+            arcpy.CalculateField_management(intersect_output_fc, "UNIDAD_22", "Left([CODIGO_UNIDAD_CONSTRUCCION],22)", "VB")
+            arcpy.CalculateField_management(intersect_output_fc, "DIFERENCIA", "[TERRENO_22] = [UNIDAD_22]", "VB")
+            query_filtro = "DIFERENCIA = 0"
+            arcpy.MakeFeatureLayer_management(intersect_output_fc, "temp_layer_name", query_filtro)
+            arcpy.CopyFeatures_management("temp_layer_name", intersect_output_fc_filtro)
+
+            query_filtro_eliminar = "CP_U = '2' AND EDIFICIO_UNIDAD <> '00000000'"
+            arcpy.MakeFeatureLayer_management(intersect_output_fc_filtro, "temp_layer_name_eliminar", query_filtro_eliminar)
+
+            # Eliminar los registros de la capa filtrada intersect_output_fc_filtro
+            arcpy.DeleteRows_management("temp_layer_name_eliminar")
+
+            # Eliminar la capa temporal después de su uso
+            arcpy.Delete_management("temp_layer_name_eliminar")
+
+            fields = [field.name for field in arcpy.ListFields(intersect_output_fc_filtro)]
+            data = [list(row) for row in arcpy.da.SearchCursor(intersect_output_fc_filtro, fields)] if arcpy.Exists(intersect_output_fc_filtro) else []
+            df = pd.DataFrame(data, columns=fields)
+            df = df[['TERRENO_CODIGO','CODIGO_UNIDAD_CONSTRUCCION']]
+            print(df)
+            if df.empty:
+                print("Advertencia: el DataFrame está vacío después del filtro.")
+
+            return df  
+
         except Exception as e:
             tkMessageBox.showerror("Error", "No se pudo procesar: {}".format(str(e)))
             print("Error:", e)
             return None
+    
+
+    def validar_npn__construccion_diferente_de_terreno(self, gdb_path):
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+        feature_class_name_construccion = "r_lc_construccion" if self.tipo_area.get() == "Rural" else "u_lc_construccion"
+        feature_class_path_construccion = os.path.join(gdb_path, feature_class_name_construccion)
+
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(feature_class_path):
+            tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name))
+            return None  
+        
+        if not arcpy.Exists(feature_class_path_construccion):
+            tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name_construccion))
+            return None  
+
+        # Definir rutas de salida
+        unidad_puntos_fc = os.path.join(gdb_path, "puntos_construccion")
+        formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado_construccion")
+        informal_filtrado_fc = os.path.join(gdb_path, "informal_filtrado_construccion")
+        informal_dissolve_fc = os.path.join(gdb_path, "informal_dissolved1_construccion")
+        erase_output_fc = os.path.join(gdb_path, "unico_clip__construccion")
+        merge_output_fc = os.path.join(gdb_path, "unico__construccion")
+        intersect_output_fc = os.path.join(gdb_path, "interseccion_construccion")
+        intersect_output_fc_filtro = os.path.join(gdb_path, "interseccion_construccion_filtro")
+        try:
+            # Verificar y eliminar capas existentes
+            for fc in [unidad_puntos_fc, formal_filtrado_fc, informal_filtrado_fc, informal_dissolve_fc, erase_output_fc, merge_output_fc, intersect_output_fc]:
+                if arcpy.Exists(fc):
+                    arcpy.Delete_management(fc)
+
+            # Ejecutar Merge (terreno y unidades de construcción en puntos)
+            arcpy.CopyFeatures_management(feature_class_path, merge_output_fc)
+            print("Copia de terreno completada: ", merge_output_fc)
+
+            # Filtrar 'formal' (donde el 22° dígito de TERRENO_CODIGO no es '2')
+            query_formal = "SUBSTRING(TERRENO_CODIGO, 22, 1) <> '2'"
+            arcpy.MakeFeatureLayer_management(feature_class_path, "formal_layer", query_formal)
+            arcpy.CopyFeatures_management("formal_layer", formal_filtrado_fc)
+
+            # Filtrar 'informal' (donde el 22° dígito de TERRENO_CODIGO es '2')
+            query_informal = "SUBSTRING(TERRENO_CODIGO, 22, 1) = '2'"
+            arcpy.MakeFeatureLayer_management(feature_class_path, "informal_layer", query_informal)
+            arcpy.CopyFeatures_management("informal_layer", informal_filtrado_fc)
+
+            # Ejecutar Dissolve si el campo DIMENSION existe
+            campos_dissolve = ["DIMENSION"] if "DIMENSION" in [f.name for f in arcpy.ListFields(informal_filtrado_fc)] else None
+            arcpy.Dissolve_management(informal_filtrado_fc, informal_dissolve_fc, campos_dissolve)
+            print("Dissolve completado: ", informal_dissolve_fc)
+
+            # Ejecutar Erase (descartar áreas de intersección)
+            if arcpy.Exists(informal_dissolve_fc) and int(arcpy.GetCount_management(informal_dissolve_fc)[0]) > 0:
+                arcpy.Erase_analysis(merge_output_fc, informal_dissolve_fc, erase_output_fc)
+                print("Erase completado: ", erase_output_fc)
+            else:
+                print("Advertencia: 'informal_dissolved1' no tiene datos o no existe, se omite el Erase.")
+                erase_output_fc = merge_output_fc  # Si no hay intersecciones, usa el merge original
+
+            # Agregar datos de 'informal_filtrado' al resultado final
+            if arcpy.Exists(informal_filtrado_fc) and int(arcpy.GetCount_management(informal_filtrado_fc)[0]) > 0:
+                arcpy.Append_management(informal_filtrado_fc, erase_output_fc, "NO_TEST")
+                print("Datos de 'informal_filtrado' copiados a 'unico'.")
+            else:
+                print("Advertencia: 'informal_filtrado' no tiene datos, se omite el Append.")
+
+            # **Ejecutar Intersección entre erase_output_fc y unidad_puntos_fc**
+            
+            def verificar_geometria(capa):
+                with arcpy.da.SearchCursor(capa, ["SHAPE@"]) as cursor:
+                    for row in cursor:
+                        if row[0] is None:
+                            print("La capa {capa} tiene geometrías vacías.")
+                            return False
+                return True
+
+            if verificar_geometria(feature_class_path_construccion) and verificar_geometria(erase_output_fc):
+                    arcpy.Intersect_analysis([feature_class_path_construccion, erase_output_fc], intersect_output_fc, "ALL", "", "INPUT")
+            else:
+                print("Algunas capas no tienen geometrías válidas.")
+            
+            arcpy.AddField_management(intersect_output_fc, "TERRENO_22", "TEXT", field_length = 22)
+            arcpy.AddField_management(intersect_output_fc, "CONSTRUCCION_22", "TEXT", field_length = 22)
+            arcpy.AddField_management(intersect_output_fc, "DIFERENCIA", "LONG")
+
+
+            arcpy.CalculateField_management(intersect_output_fc, "TERRENO_22", "Left([TERRENO_CODIGO],22)", "VB")
+            arcpy.CalculateField_management(intersect_output_fc, "CONSTRUCCION_22", "Left([CODIGO_CONSTRUCCION],22)", "VB")
+            arcpy.CalculateField_management(intersect_output_fc, "DIFERENCIA", "[TERRENO_22] = [CONSTRUCCION_22]", "VB")
+            query_filtro = "DIFERENCIA = 0"
+            arcpy.MakeFeatureLayer_management(intersect_output_fc, "temp_layer_name", query_filtro)
+            arcpy.CopyFeatures_management("temp_layer_name", intersect_output_fc_filtro)
+
+            fields = [field.name for field in arcpy.ListFields(intersect_output_fc_filtro)]
+            data = [list(row) for row in arcpy.da.SearchCursor(intersect_output_fc_filtro, fields)] if arcpy.Exists(intersect_output_fc_filtro) else []
+            df = pd.DataFrame(data, columns=fields)
+            df = df[['TERRENO_CODIGO','CODIGO_CONSTRUCCION']]
+            
+            print(df)
+
+            if df.empty:
+                print("Advertencia: el DataFrame está vacío después del filtro.")
+
+            return df  
+        except Exception as e:
+            tkMessageBox.showerror("Error", "No se pudo procesar: {}".format(str(e)))
+            print("Error:", e)
+            return None
+
     def select_gdb(self):
         path = tkFileDialog.askdirectory(title="Seleccionar Geodatabase (GDB)")
         if path:
