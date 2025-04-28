@@ -757,7 +757,7 @@ class GDBExcelValidator(Frame):
         path = tkFileDialog.askdirectory(title="Seleccionar Geodatabase (GDB)")
         if path:
             self.gdb_path.set(path)
-
+    print("")
     def select_excel(self):
         path = tkFileDialog.askopenfilename(title="Seleccionar Archivo Excel", 
                                              filetypes=[("Excel files", ".xlsx;.xls")])
