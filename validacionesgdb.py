@@ -156,7 +156,10 @@ class GDBExcelValidator(Frame):
             diff_npn_excel = set(npn_excel) - set(terreno_codigo_gdb)
 
             def filtrar_omisiones(npn_list):
-                return [npn for npn in npn_list if len(npn) >= 30 and (npn[21] != '9' or npn[26:30] == '0000')]
+                return [
+                    npn for npn in npn_list
+                    if len(npn) >= 30 and npn[21] in ('8', '9') and npn[26:30] == '0000'
+                ]
 
             omisiones_filtradas = filtrar_omisiones(diff_npn_excel)
 
@@ -358,10 +361,10 @@ class GDBExcelValidator(Frame):
 
         # Calcular diferencia
         df_comparacion['Diferencia'] = abs(df_comparacion['Area_GDB'] - df_comparacion['Area_Excel'])
-
+        df_comparacion_filtrada = df_comparacion[df_comparacion['Diferencia'] > 2.5]
         # Filtrar diferencias significativas (> 20)
         #df_diferencias = df_comparacion[df_comparacion['Diferencia']]
-        return df_comparacion
+        return df_comparacion_filtrada
 
 
     def validar_terreno_codigo_duplicado(self, gdb_path):
@@ -396,7 +399,39 @@ class GDBExcelValidator(Frame):
         else:
             #tkMessageBox.showinfo("Validación Exitosa", "No se encontraron códigos de terreno duplicados.")
             return []
+    
+    def validar_terreno_codigo_duplicado(self, gdb_path):
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(feature_class_path):
+            tkMessageBox.showerror("Error", "La capa {feature_class_name} no existe en la GDB.")
+            return
+
+        fields = [field.name for field in arcpy.ListFields(feature_class_path)]
         
+        if "TERRENO_CODIGO" not in fields:
+            tkMessageBox.showerror("Error", "La columna 'TERRENO_CODIGO' no existe en la Feature Class.")
+            return
+
+        # Leer los valores de TERRENO_CODIGO y contar duplicados
+        terreno_codigos = [row[0] for row in arcpy.da.SearchCursor(feature_class_path, ["TERRENO_CODIGO"])]
+
+        # Encontrar duplicados
+        contador_codigos = {}
+        for codigo in terreno_codigos:
+            contador_codigos[codigo] = contador_codigos.get(codigo, 0) + 1
+
+        duplicados = [codigo for codigo, count in contador_codigos.items() if count > 1]
+
+        if duplicados:
+            #tkMessageBox.showwarning("Advertencia", "Se encontraron {len(duplicados)} códigos de terreno duplicados.")
+            return duplicados
+        else:
+            #tkMessageBox.showinfo("Validación Exitosa", "No se encontraron códigos de terreno duplicados.")
+            return []
 
     def validar_ph_sin_unidad_predial(self, gdb_path):
         feature_class_name = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
