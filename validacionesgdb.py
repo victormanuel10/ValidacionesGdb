@@ -217,16 +217,20 @@ class GDBExcelValidator(Frame):
 
             df_diferencias_areas_construidas=self.calcular_areas_construidas()
             npn_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
-            ph_sin_unidad = self.validar_ph_sin_unidad_predial(gdb_path)
-            terreno_con_nro_piso= self.validar_terreno_con_piso(gdb_path)
+            df_ph_sin_unidad = self.calcular_campos_y_filtrar(gdb_path, self.tipo_area.get())
             
-            df_terreno_con_nro_piso = pd.DataFrame(terreno_con_nro_piso, columns=["TERRENO_CODIGO_Con_Nro_Piso"])
+            df_terreno_con_nro_piso= self.validar_terreno_con_piso(gdb_path, self.tipo_area.get())
+            #print("df_terreno_con_nro_piso")
+            #print (df_terreno_con_nro_piso)
+            #df_terreno_con_nro_piso = pd.DataFrame(terreno_con_nro_piso, columns=["TERRENO_CODIGO_Con_Nro_Piso"])
+            
+            
             df_npns_duplicados = pd.DataFrame(npn_duplicados, columns=["TERRENO_CODIGO_Duplicado"])
+            #print(df_npns_duplicados)
             df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
             df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
             df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
             
-            df_ph_sin_unidad = pd.DataFrame(ph_sin_unidad, columns=["PH sin unidad predial"])
             
             for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
                     sheet_diferencias.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -237,55 +241,57 @@ class GDBExcelValidator(Frame):
                     sheet_diferencias.write(row_num, col_num, str(value).decode('utf-8'))
 
             for col_num, column in enumerate(df_terreno_con_nro_piso.columns):
-                    sheet_terreno_nro_piso.write(0, col_num, column.decode('utf-8'), bold_style)
+                sheet_terreno_nro_piso.write(0, col_num, column.decode('utf-8'), bold_style)
 
-            # Escribir los datos de diferencias de áreas construidas
+            # Escribir datos
             for row_num, row in enumerate(df_terreno_con_nro_piso.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_terreno_nro_piso.write(row_num, col_num, str(value).decode('utf-8'))
 
-            # Escribir los encabezados de la lista de duplicados
-            for col_num, column in enumerate(df_npns_duplicados.columns):
-                sheet_duplicados.write(0, len(df_npns_duplicados.columns) + col_num, column.decode('utf-8'), bold_style)
 
-            # Escribir los datos de códigos de terreno duplicados
+            for col_num, column in enumerate(df_npns_duplicados.columns):
+                sheet_duplicados.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
             for row_num, row in enumerate(df_npns_duplicados.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
-                    sheet_duplicados.write(row_num, len(df_npns_duplicados.columns) + col_num, str(value).decode('utf-8'))
+                    sheet_duplicados.write(row_num, col_num, str(value).decode('utf-8'))
 
-
+            
             for col_num, column in enumerate(df_ph_sin_unidad.columns):
-                sheet_ph_sin_unidad.write(0, len(df_ph_sin_unidad.columns) + col_num, column.decode('utf-8'), bold_style)
+                sheet_ph_sin_unidad.write(0, col_num, column.decode('utf-8'), bold_style)
 
-            # Escribir los datos de códigos de terreno duplicados
+            # Escribir datos
             for row_num, row in enumerate(df_ph_sin_unidad.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
-                    sheet_ph_sin_unidad.write(row_num, len(df_ph_sin_unidad.columns) + col_num, str(value).decode('utf-8'))
+                    sheet_ph_sin_unidad.write(row_num, col_num, str(value).decode('utf-8'))
 
-            for col_num, column in enumerate(df_informalidades_sin_predio_formal.columns): 
-                sheet_informalidades_sin_predio_formal.write(0, len(df_informalidades_sin_predio_formal.columns) + col_num, column.decode('utf-8'), bold_style)
+            for col_num, column in enumerate(df_informalidades_sin_predio_formal.columns):
+                sheet_informalidades_sin_predio_formal.write(0, col_num, column.decode('utf-8'), bold_style)
 
-            # Escribir los datos de códigos de terreno duplicados
+            # Escribir datos
             for row_num, row in enumerate(df_informalidades_sin_predio_formal.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
-                    sheet_informalidades_sin_predio_formal.write(row_num, len(df_informalidades_sin_predio_formal.columns) + col_num, str(value).decode('utf-8'))
+                    sheet_informalidades_sin_predio_formal.write(row_num, col_num, str(value).decode('utf-8'))
+
             
+            for col_num, column in enumerate(df_npn__unidad_diferente_de_terreno.columns):
+                sheet_npn__unidad_diferente_de_terreno.write(0, col_num, column.decode('utf-8'), bold_style)
 
-            for col_num, column in enumerate(df_npn__unidad_diferente_de_terreno.columns): 
-                sheet_npn__unidad_diferente_de_terreno.write(0, len(df_npn__unidad_diferente_de_terreno.columns) + col_num, column.decode('utf-8'), bold_style)
-
-            # Escribir los datos de códigos de terreno duplicados
+            # Escribir datos
             for row_num, row in enumerate(df_npn__unidad_diferente_de_terreno.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
-                    sheet_npn__unidad_diferente_de_terreno.write(row_num, len(df_npn__unidad_diferente_de_terreno.columns) + col_num, str(value).decode('utf-8'))
-            
-            for col_num, column in enumerate(df_npn__construccion_diferente_de_terreno.columns): 
-                sheet_npn__construccion_diferente_de_terreno.write(0, len(df_npn__construccion_diferente_de_terreno.columns) + col_num, column.decode('utf-8'), bold_style)
+                    sheet_npn__unidad_diferente_de_terreno.write(row_num, col_num, str(value).decode('utf-8'))
 
-            # Escribir los datos de códigos de terreno duplicados
+            
+            for col_num, column in enumerate(df_npn__construccion_diferente_de_terreno.columns):
+                sheet_npn__construccion_diferente_de_terreno.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
             for row_num, row in enumerate(df_npn__construccion_diferente_de_terreno.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
-                    sheet_npn__construccion_diferente_de_terreno.write(row_num, len(df_npn__construccion_diferente_de_terreno.columns) + col_num, str(value).decode('utf-8'))
+                    sheet_npn__construccion_diferente_de_terreno.write(row_num, col_num, str(value).decode('utf-8'))
+
 
             workbook.save(output_path)
             
@@ -316,7 +322,7 @@ class GDBExcelValidator(Frame):
         # Configurar entorno ArcPy
         arcpy.env.workspace = gdb_path
         arcpy.env.overwriteOutput = True
-        print("\nGDB seleccionada: {}".format(gdb_path))
+        #print("\nGDB seleccionada: {}".format(gdb_path))
 
         # Extraer datos de la GDB
         df_unidadconstruccion = extraer_tabla_de_gdb_area_construida(gdb_path, self.tipo_area.get())
@@ -344,6 +350,7 @@ class GDBExcelValidator(Frame):
 
 
         except Exception as e:
+            #print("Error leyendo Excel:", str(e))
             tkMessageBox.showerror("Error", "No se pudo leer las hojas del Excel:\n{}".format(str(e)))
             return
 
@@ -370,9 +377,11 @@ class GDBExcelValidator(Frame):
     def validar_terreno_codigo_duplicado(self, gdb_path):
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
         feature_class_path = os.path.join(gdb_path, feature_class_name)
-
         arcpy.env.workspace = gdb_path
-
+        feature_classes = arcpy.ListFeatureClasses()
+        
+        for fc in feature_classes:
+            print(fc)
         if not arcpy.Exists(feature_class_path):
             tkMessageBox.showerror("Error", "La capa {feature_class_name} no existe en la GDB.")
             return
@@ -400,103 +409,80 @@ class GDBExcelValidator(Frame):
             #tkMessageBox.showinfo("Validación Exitosa", "No se encontraron códigos de terreno duplicados.")
             return []
     
-    def validar_terreno_codigo_duplicado(self, gdb_path):
-        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+
+    def calcular_campos_y_filtrar(self, gdb_path, tipo_area):
+        feature_class_name = "r_lc_unidadconstruccion" if tipo_area == "Rural" else "u_lc_unidadconstruccion"
         feature_class_path = os.path.join(gdb_path, feature_class_name)
+        filtro_feature_class_path = os.path.join(gdb_path, "filtro_unidadconstruccion")
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(feature_class_path):
+            raise Exception("La capa {feature_class_name} no existe en la GDB.")
+
+        # Agregar campos si no existen
+        fields = [f.name for f in arcpy.ListFields(feature_class_path)]
+        if "CP" not in fields:
+            arcpy.AddField_management(feature_class_path, "CP", "TEXT", field_length=1)
+        if "UNIDAD" not in fields:
+            arcpy.AddField_management(feature_class_path, "UNIDAD", "TEXT", field_length=4)
+
+        
+        arcpy.CalculateField_management(feature_class_path, "CP", "Mid([CODIGO_UNIDAD_CONSTRUCCION], 22, 1)", "VB")
+        arcpy.CalculateField_management(feature_class_path, "UNIDAD", "Right([CODIGO_UNIDAD_CONSTRUCCION],4)", "VB")
+        
+
+        query_filtro = "CP = '9' AND UNIDAD = '0000' AND TIPO_DOMINIO = 1"
+        arcpy.MakeFeatureLayer_management(feature_class_path, "temp_layer_name", query_filtro)
+        arcpy.CopyFeatures_management("temp_layer_name", filtro_feature_class_path)
+        
+        fields = [field.name for field in arcpy.ListFields(filtro_feature_class_path)]
+        data = [list(row) for row in arcpy.da.SearchCursor(filtro_feature_class_path, fields)] if arcpy.Exists(filtro_feature_class_path) else []
+        df = pd.DataFrame(data, columns=fields)
+        df = df[['CODIGO_UNIDAD_CONSTRUCCION']]
+            
+        if df.empty:
+                print("Advertencia: el DataFrame está vacío después del filtro.")
+
+        return df 
+
+    def validar_terreno_con_piso(self, gdb_path, tipo_area):
+        feature_class_name = "r_lc_terreno" if tipo_area == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+        filtro_feature_class_path = os.path.join(gdb_path, "filtro_unidadconstruccion")
 
         arcpy.env.workspace = gdb_path
 
         if not arcpy.Exists(feature_class_path):
-            tkMessageBox.showerror("Error", "La capa {feature_class_name} no existe en la GDB.")
-            return
-
-        fields = [field.name for field in arcpy.ListFields(feature_class_path)]
-        
-        if "TERRENO_CODIGO" not in fields:
-            tkMessageBox.showerror("Error", "La columna 'TERRENO_CODIGO' no existe en la Feature Class.")
-            return
-
-        # Leer los valores de TERRENO_CODIGO y contar duplicados
-        terreno_codigos = [row[0] for row in arcpy.da.SearchCursor(feature_class_path, ["TERRENO_CODIGO"])]
-
-        # Encontrar duplicados
-        contador_codigos = {}
-        for codigo in terreno_codigos:
-            contador_codigos[codigo] = contador_codigos.get(codigo, 0) + 1
-
-        duplicados = [codigo for codigo, count in contador_codigos.items() if count > 1]
-
-        if duplicados:
-            #tkMessageBox.showwarning("Advertencia", "Se encontraron {len(duplicados)} códigos de terreno duplicados.")
-            return duplicados
-        else:
-            #tkMessageBox.showinfo("Validación Exitosa", "No se encontraron códigos de terreno duplicados.")
-            return []
-
-    def validar_ph_sin_unidad_predial(self, gdb_path):
-        feature_class_name = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
-        feature_class_path = os.path.join(gdb_path, feature_class_name)
-
-        arcpy.env.workspace = gdb_path
-
-        if not arcpy.Exists(feature_class_path):
-            tkMessageBox.showerror("Error", "La capa {feature_class_name} no existe en la GDB.")
-            return
-
-        fields = [field.name for field in arcpy.ListFields(feature_class_path)]
-        
-        if "CODIGO_UNIDAD_CONSTRUCCION" not in fields:
-            tkMessageBox.showerror("Error", "La columna 'CODIGO_UNIDAD_CONSTRUCCION' no existe en la Feature Class.")
-            return
-
-        # Leer los valores de CODIGO_UNIDAD_CONSTRUCCION
-        UnidadConstruccion = [row[0] for row in arcpy.da.SearchCursor(feature_class_path, ["CODIGO_UNIDAD_CONSTRUCCION"])]
-
-        # Filtrar por los primeros 22 caracteres y verificar el dígito 22
-        codigos_filtrados = [codigo[:22] for codigo in UnidadConstruccion if len(codigo) >= 22 and codigo[21] in ('9', '8')]
-
-        # Contar ocurrencias
-        contador_codigos = {}
-        for codigo in codigos_filtrados:
-            contador_codigos[codigo] = contador_codigos.get(codigo, 0) + 1
-
-        # Obtener los códigos sin duplicados
-        sin_duplicados = [codigo for codigo, count in contador_codigos.items() if count == 1]
-        
-        
-        return sin_duplicados if sin_duplicados else ["NO HAY REGLAMENTOS"]
-
-    def validar_terreno_con_piso(self, gdb_path):
-        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
-        feature_class_path = os.path.join(gdb_path, feature_class_name)
-
-        arcpy.env.workspace = gdb_path
-
-        if not arcpy.Exists(feature_class_path):
-            tkMessageBox.showerror("Error", "La capa {feature_class_name} no existe en la GDB.")
-            return []
+            raise Exception("La capa {feature_class_name} no existe en la GDB.")
 
         fields = [field.name for field in arcpy.ListFields(feature_class_path)]
 
         if "TERRENO_CODIGO" not in fields:
-            tkMessageBox.showerror("Error", "La columna 'TERRENO_CODIGO' no existe en la Feature Class.")
-            return []
+            raise Exception("La columna 'TERRENO_CODIGO' no existe en la Feature Class.")
 
-        try:
-            with arcpy.da.SearchCursor(feature_class_path, ["TERRENO_CODIGO"]) as cursor:
-                terreno_codigos = [row[0] for row in cursor if row[0] and isinstance(row[0], str) and len(row[0]) >= 30]
+        if "CP" not in fields:
+            arcpy.AddField_management(feature_class_path, "CP", "TEXT", field_length=1)
+        if "UNIDAD" not in fields:
+            arcpy.AddField_management(feature_class_path, "ULTIMOS_8", "TEXT", field_length=8)
 
-            # Filtrar códigos que cumplen ambas condiciones
-            codigos_validos = [
-                codigo for codigo in terreno_codigos
-                if codigo[21] == '0' and sum(int(d) for d in codigo[-4:]) != 0
-            ]
+        arcpy.CalculateField_management(feature_class_path, "CP", "Mid([TERRENO_CODIGO], 22, 1)", "VB")
+        arcpy.CalculateField_management(feature_class_path, "ULTIMOS_8", "Right([TERRENO_CODIGO],8)", "VB")
+        
+        query_filtro = "CP <> '8' AND ULTIMOS_8 <> '00000000'"
 
-            return codigos_validos
+        arcpy.MakeFeatureLayer_management(feature_class_path, "temp_layer_name", query_filtro)
+        arcpy.CopyFeatures_management("temp_layer_name", filtro_feature_class_path)
+        
+        fields = [field.name for field in arcpy.ListFields(filtro_feature_class_path)]
+        data = [list(row) for row in arcpy.da.SearchCursor(filtro_feature_class_path, fields)] if arcpy.Exists(filtro_feature_class_path) else []
+        df = pd.DataFrame(data, columns=fields)
+        df = df[['TERRENO_CODIGO']]
+            
+        if df.empty:
+                print("Advertencia: el DataFrame está vacío después del filtro.")
 
-        except Exception as e:
-            tkMessageBox.showerror("Error", "Error al procesar los datos: {str(e)}")
-            return []
+        return df 
+
 
     def copiar_filtrar_buffer_y_join(self, gdb_path):
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
@@ -777,7 +763,7 @@ class GDBExcelValidator(Frame):
             df = pd.DataFrame(data, columns=fields)
             df = df[['TERRENO_CODIGO','CODIGO_CONSTRUCCION']]
             
-            print(df)
+            #print(df)
 
             if df.empty:
                 print("Advertencia: el DataFrame está vacío después del filtro.")
@@ -792,7 +778,7 @@ class GDBExcelValidator(Frame):
         path = tkFileDialog.askdirectory(title="Seleccionar Geodatabase (GDB)")
         if path:
             self.gdb_path.set(path)
-    print("")
+
     def select_excel(self):
         path = tkFileDialog.askopenfilename(title="Seleccionar Archivo Excel", 
                                              filetypes=[("Excel files", ".xlsx;.xls")])
