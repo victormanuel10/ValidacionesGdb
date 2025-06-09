@@ -175,6 +175,8 @@ class GDBExcelValidator(Frame):
             sheet_npn__unidad_diferente_de_terreno = workbook.add_sheet('Npn Unidad Dif De Terreno')
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
+            
+            #sheet_reporte=workbook.add_sheet('Reporte')
             headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
                     "Terreno o Predios", "Condición Predio", "Edificio", "Número Piso", "Unidad Predial"]
             
@@ -218,7 +220,6 @@ class GDBExcelValidator(Frame):
             df_diferencias_areas_construidas=self.calcular_areas_construidas()
             df_npns_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
             df_ph_sin_unidad = self.calcular_campos_y_filtrar(gdb_path, self.tipo_area.get())
-            
             df_terreno_con_nro_piso= self.validar_terreno_con_piso(gdb_path, self.tipo_area.get())
             #print("df_terreno_con_nro_piso")
             #print (df_terreno_con_nro_piso)
@@ -229,8 +230,22 @@ class GDBExcelValidator(Frame):
             df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
             df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
             df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
-            
-            
+            reportes_dict = {
+                u"Comisiones":diff_terreno_codigo,
+                u"Omisiones":omisiones_filtradas,
+                u"Diferencias de area > 2.5": df_diferencias_areas_construidas,
+                u"NPNs Duplicados": df_npns_duplicados,
+                u"PH sin Unidad Predial": df_ph_sin_unidad,
+                u"Terrenos con Numero de Piso": df_terreno_con_nro_piso,
+                u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
+                u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
+                u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
+                u"Informalidades Sobre Predio": df_informalidad_sobre_predio
+            }
+
+            # Llamar a la función reporte
+            self.reporte(workbook, reportes_dict)
+        
             
             for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
                     sheet_diferencias.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -311,7 +326,7 @@ class GDBExcelValidator(Frame):
 
         except Exception as e:
             tkMessageBox.showerror("Error", str(e))
-
+    
     
     def calcular_areas_construidas(self):
         import sys
@@ -803,14 +818,14 @@ class GDBExcelValidator(Frame):
                 with arcpy.da.SearchCursor(capa, ["SHAPE@"]) as cursor:
                     for row in cursor:
                         if row[0] is None:
-                            print("La capa {capa} tiene geometrías vacías.")
+                            print("La capa {capa} tiene geometrias vacias.")
                             return False
                 return True
 
             if verificar_geometria(feature_class_path_construccion) and verificar_geometria(erase_output_fc):
                     arcpy.Intersect_analysis([feature_class_path_construccion, erase_output_fc], intersect_output_fc, "ALL", "", "INPUT")
             else:
-                print("Algunas capas no tienen geometrías válidas.")
+                print("Algunas capas no tienen geometrias válidas.")
             
             arcpy.AddField_management(intersect_output_fc, "TERRENO_22", "TEXT", field_length = 22)
             arcpy.AddField_management(intersect_output_fc, "CONSTRUCCION_22", "TEXT", field_length = 22)
@@ -832,7 +847,7 @@ class GDBExcelValidator(Frame):
             #print(df)
 
             if df.empty:
-                print("Advertencia: el DataFrame está vacío después del filtro.")
+                print("Advertencia: el DataFrame está vacio después del filtro.")
 
             return df  
         except Exception as e:
@@ -929,6 +944,21 @@ class GDBExcelValidator(Frame):
             print("Error:", e)
             return None
 
+    def reporte(self, workbook, reportes_dict):
+        sheet_reporte = workbook.add_sheet('Reporte')
+
+        # Escribir encabezados
+        sheet_reporte.write(0, 0, 'Descripcion')
+        sheet_reporte.write(0, 1, 'Cantidad')
+        
+        row = 1
+        for descripcion, df in reportes_dict.items():
+            cantidad = len(df)
+            sheet_reporte.write(row, 0, descripcion)
+            sheet_reporte.write(row, 1, cantidad)
+            row += 1
+
+    
     def select_gdb(self):
         path = tkFileDialog.askdirectory(title="Seleccionar Geodatabase (GDB)")
         if path:
