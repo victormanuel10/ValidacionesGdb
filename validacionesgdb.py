@@ -242,9 +242,10 @@ class GDBExcelValidator(Frame):
                 u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
                 u"Informalidades Sobre Predio": df_informalidad_sobre_predio
             }
-
+            df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
+            total_fichas = df_fichas['NroFicha'].nunique()
             # Llamar a la función reporte
-            self.reporte(workbook, reportes_dict)
+            self.reporte(workbook, reportes_dict, gdb_path)
         
             
             for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
@@ -386,7 +387,10 @@ class GDBExcelValidator(Frame):
         df_comparacion['Area_GDB'] = pd.to_numeric(df_comparacion['Area_GDB'], errors='coerce').fillna(0).round(2)
         df_comparacion['Area_Excel'] = pd.to_numeric(df_comparacion['Area_Excel'], errors='coerce').fillna(0).round(2)
         df_comparacion['Diferencia'] = (df_comparacion['Area_GDB'] - df_comparacion['Area_Excel']).abs()
-
+        df_comparacion.rename(columns={
+            'CODIGO_UNIDAD_CONSTRUCCION': 'CODIGO_UNIDAD_CONSTRUCCION (22)',
+            'Npn': 'Npn (22)'
+        }, inplace=True)
         df_filtrada = df_comparacion[df_comparacion['Diferencia'] > 2.5].copy()
 
         def calc_porcentaje(row):
@@ -907,7 +911,9 @@ class GDBExcelValidator(Frame):
                 matricula = row.get("MatriculaInmobiliaria", "")
                 RazonSocial=row.get("RazonSocial","")
                 terreno1 = row.get("TERRENO_CODIGO_1", "")
+                modo = row.get("ModoAdquisicion", "")
                 modo1 = row.get("ModoAdquisicion_1", "")
+                tipo = row.get("PredioLcTipo", "")
                 tipo1 = row.get("PredioLcTipo_1", "")
                 if matricula:  # Caso 1: tiene matricula
                     if modo1 != "2|POSESIN" or tipo1 != "Predio.Privado.Privado":
@@ -915,18 +921,22 @@ class GDBExcelValidator(Frame):
                             "Observacion": "ModoAdquisicion y PredioLcTipo incorrecto para Predio informal sobre predio con matricula",
                             "TERRENO_CODIGO_FORMAL": terreno,
                             "MatriculaInmobiliaria": matricula,
+                            "PredioLcTipo_FORMAL":tipo,
                             "PredioLcTipo_INFORMALIDAD":tipo1,
+                            "ModoAdquisicion_FORMAL":modo,
                             "ModoAdquisicion_INFORMALIDAD":modo1,
                             "RazonSocial":RazonSocial
                             
                         })
                 else:  # Caso 2: sin matricula
-                    if modo1 != "5|OCUPACIN" or tipo1 != "Predio.Publico.Presunto_Baldio":
+                    if modo1 != "5|OCUPACIN" or tipo1 not in ["Predio.Publico.Presunto_Baldio", "Predio.Publico.Baldio"]:
                         errores.append({
                             "Observacion": "ModoAdquisicion y PredioLcTipo incorrecto en Predio informal sobre predio SIN matricula",
                             "TERRENO_CODIGO_INFORMAL":terreno1,
                             "MatriculaInmobiliaria": matricula,
+                            "PredioLcTipo_FORMAL":tipo,
                             "PredioLcTipo_INFORMALIDAD":tipo1,
+                            "ModoAdquisicion_FORMAL":modo,
                             "ModoAdquisicion_INFORMALIDAD":modo1,
                             "RazonSocial":RazonSocial
                         })
@@ -944,19 +954,71 @@ class GDBExcelValidator(Frame):
             print("Error:", e)
             return None
 
-    def reporte(self, workbook, reportes_dict):
+    def reporte(self, workbook, reportes_dict, gdb_path):
         sheet_reporte = workbook.add_sheet('Reporte')
 
-        # Escribir encabezados
+        # Determinar la capa según el tipo de área
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+
+        # Contar total de registros en la capa
+        try:
+            total_fichas = int(arcpy.GetCount_management(feature_class_path)[0])
+        except Exception as e:
+            print("Error al contar registros de la capa:", e)
+            total_fichas = 0
+
+        # Encabezados
         sheet_reporte.write(0, 0, 'Descripcion')
         sheet_reporte.write(0, 1, 'Cantidad')
-        
+        sheet_reporte.write(0, 2, 'Porcentaje de Error')
+        sheet_reporte.write(0, 3, 'Porcentaje de Aprobacion')
+        sheet_reporte.write(0, 4, 'Concepto')
+
         row = 1
+        total_cantidad = 0
+
         for descripcion, df in reportes_dict.items():
             cantidad = len(df)
+            porcentaje = (float(cantidad) / total_fichas) * 100 if total_fichas else 0
+            porcentaje_aprobacion = 100 - porcentaje
+
+            # Determinar concepto
+            if porcentaje_aprobacion <= 50:
+                concepto = 'NO CUMPLE'
+            elif porcentaje_aprobacion <= 87.5:
+                concepto = 'CUMPLE PARCIAL'
+            else:
+                concepto = 'CUMPLE'
+
+            # Escribir fila
             sheet_reporte.write(row, 0, descripcion)
             sheet_reporte.write(row, 1, cantidad)
+            sheet_reporte.write(row, 2, '{:.1f}%'.format(porcentaje))
+            sheet_reporte.write(row, 3, '{:.1f}%'.format(porcentaje_aprobacion))
+            sheet_reporte.write(row, 4, concepto)
+
+            total_cantidad += cantidad
             row += 1
+
+        # Totales
+        porcentaje_total = (float(total_cantidad) / total_fichas) * 100 if total_fichas else 0
+        porcentaje_aprob_total = 100 - porcentaje_total
+
+        # Concepto total
+        if porcentaje_aprob_total <= 50:
+            evaluacion = 'NO CUMPLE'
+        elif porcentaje_aprob_total <= 87.5:
+            evaluacion = 'CUMPLE PARCIAL'
+        else:
+            evaluacion = 'CUMPLE'
+
+        # Fila TOTAL
+        sheet_reporte.write(row, 0, 'TOTAL - ' + evaluacion)
+        sheet_reporte.write(row, 1, total_cantidad)
+        sheet_reporte.write(row, 2, '{:.1f}%'.format(porcentaje_total))
+        sheet_reporte.write(row, 3, '{:.1f}%'.format(porcentaje_aprob_total))
+        sheet_reporte.write(row, 4, evaluacion)
 
     
     def select_gdb(self):
