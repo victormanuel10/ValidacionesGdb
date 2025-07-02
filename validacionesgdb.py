@@ -9,7 +9,13 @@ import Tkinter as tk
 import tkFileDialog 
 import tkMessageBox 
 from Tkinter import Frame
+import sys
 
+try:
+    reload(sys)
+    sys.setdefaultencoding('utf-8')
+except:
+    pass
 sys.path.append(r'C:\Program Files (x86)\ArcGIS\Desktop10.8\arcpy')
 os.environ['PATH'] = r"C:\Program Files\ArcGIS\Bin;" + os.environ['PATH']
 
@@ -151,14 +157,16 @@ class GDBExcelValidator(Frame):
                 return
 
             terreno_codigo_gdb = [row[0] for row in arcpy.da.SearchCursor(feature_class_path, ['TERRENO_CODIGO'])]
-
+            npn_excel = [str(n) for n in npn_excel]
+            terreno_codigo_gdb = [str(n) for n in terreno_codigo_gdb]
             diff_terreno_codigo = set(terreno_codigo_gdb) - set(npn_excel)
+            
             diff_npn_excel = set(npn_excel) - set(terreno_codigo_gdb)
 
             def filtrar_omisiones(npn_list):
                 return [
                     npn for npn in npn_list
-                    if len(npn) >= 30 and npn[21] in ('8', '9') and npn[26:30] == '0000'
+                    if len(npn) >= 30 and npn[21] in ('8', '9','0','2') and npn[26:30] == '0000'
                 ]
 
             omisiones_filtradas = filtrar_omisiones(diff_npn_excel)
@@ -175,6 +183,7 @@ class GDBExcelValidator(Frame):
             sheet_npn__unidad_diferente_de_terreno = workbook.add_sheet('Npn Unidad Dif De Terreno')
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
+            sheet_validar = workbook.add_sheet('Numero de pisos')
             
             #sheet_reporte=workbook.add_sheet('Reporte')
             headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
@@ -217,6 +226,16 @@ class GDBExcelValidator(Frame):
                 sheet_comisiones.col(col_num).width = (width + 2) * 256  
                 sheet_omisiones.col(col_num).width = (width + 2) * 256  
             df_informalidad_sobre_predio=self.validacion_informalidad_sobre_predio(gdb_path)
+            df_validar=self.validar(gdb_path)
+            self.extraer_letras_identificador(gdb_path)
+            if df_validar is not None:
+                df_filtrado_pisos = df_validar[df_validar["Diferencia"] != 0]
+                if not df_filtrado_pisos.empty:
+                    print("Filtrados con diferencia distinta de 0:\n", df_filtrado_pisos)
+                else:
+                    print("Todos tienen diferencia cero.")
+            else:
+                print("No se generó DataFrame.")
             df_diferencias_areas_construidas=self.calcular_areas_construidas()
             df_npns_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
             df_ph_sin_unidad = self.calcular_campos_y_filtrar(gdb_path, self.tipo_area.get())
@@ -240,7 +259,8 @@ class GDBExcelValidator(Frame):
                 u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
                 u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
                 u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
-                u"Informalidades Sobre Predio": df_informalidad_sobre_predio
+                u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
+                u"Numero de pisos":df_filtrado_pisos
             }
             df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
             total_fichas = df_fichas['NroFicha'].nunique()
@@ -311,7 +331,9 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_npn__construccion_diferente_de_terreno.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_npn__construccion_diferente_de_terreno.write(row_num, col_num, str(value).decode('utf-8'))
-
+            
+            
+            
             for col_num, column in enumerate(df_informalidad_sobre_predio.columns):
                 sheet_npn_validacion_informalidad_sobre_predio.write(0, col_num, column.decode('utf-8'), bold_style)
 
@@ -320,6 +342,15 @@ class GDBExcelValidator(Frame):
                 for col_num, value in enumerate(row):
                     sheet_npn_validacion_informalidad_sobre_predio.write(row_num, col_num, str(value).decode('utf-8'))
 
+
+            for col_num, column in enumerate(df_filtrado_pisos.columns):
+                sheet_validar.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
+            for row_num, row in enumerate(df_filtrado_pisos.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_validar.write(row_num, col_num, str(value).decode('utf-8'))
+            
             workbook.save(output_path)
             
             tkMessageBox.showinfo("Éxito".decode('utf-8'), u"Proceso finalizado correctamente.\nArchivos guardados en:\n" +
@@ -867,7 +898,7 @@ class GDBExcelValidator(Frame):
         arcpy.env.workspace = gdb_path
 
         if not arcpy.Exists(feature_class_path):
-            tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name))
+            tkMessageBox.showerror("Error", u"La capa {} no existe en la GDB.".format(feature_class_name))
             return None  
 
         # Definir rutas de salida
@@ -906,39 +937,37 @@ class GDBExcelValidator(Frame):
 
             for idx, row in df.iterrows():
                 terreno = row.get("TERRENO_CODIGO", "")
-                modo = row.get("ModoAdquisicion", "")
-                tipo = row.get("PredioLcTipo", "")
-                matricula = row.get("MatriculaInmobiliaria", "")
-                RazonSocial=row.get("RazonSocial","")
                 terreno1 = row.get("TERRENO_CODIGO_1", "")
                 modo = row.get("ModoAdquisicion", "")
                 modo1 = row.get("ModoAdquisicion_1", "")
                 tipo = row.get("PredioLcTipo", "")
                 tipo1 = row.get("PredioLcTipo_1", "")
+                matricula = row.get("MatriculaInmobiliaria", "")
+                RazonSocial = row.get("RazonSocial", "")
+
                 if matricula:  # Caso 1: tiene matricula
                     if modo1 != "2|POSESIN" or tipo1 != "Predio.Privado.Privado":
                         errores.append({
-                            "Observacion": "ModoAdquisicion y PredioLcTipo incorrecto para Predio informal sobre predio con matricula",
+                            "Observacion": u"ModoAdquisicion y PredioLcTipo incorrecto para predio informal sobre predio con matricula",
                             "TERRENO_CODIGO_FORMAL": terreno,
                             "MatriculaInmobiliaria": matricula,
-                            "PredioLcTipo_FORMAL":tipo,
-                            "PredioLcTipo_INFORMALIDAD":tipo1,
-                            "ModoAdquisicion_FORMAL":modo,
-                            "ModoAdquisicion_INFORMALIDAD":modo1,
-                            "RazonSocial":RazonSocial
-                            
+                            "PredioLcTipo_FORMAL": tipo,
+                            "PredioLcTipo_INFORMALIDAD": tipo1,
+                            "ModoAdquisicion_FORMAL": modo,
+                            "ModoAdquisicion_INFORMALIDAD": modo1,
+                            "RazonSocial": RazonSocial
                         })
                 else:  # Caso 2: sin matricula
                     if modo1 != "5|OCUPACIN" or tipo1 not in ["Predio.Publico.Presunto_Baldio", "Predio.Publico.Baldio"]:
                         errores.append({
-                            "Observacion": "ModoAdquisicion y PredioLcTipo incorrecto en Predio informal sobre predio SIN matricula",
-                            "TERRENO_CODIGO_INFORMAL":terreno1,
+                            "Observacion": u"ModoAdquisicion y PredioLcTipo incorrecto en predio informal sobre predio sin matricula",
+                            "TERRENO_CODIGO_INFORMAL": terreno1,
                             "MatriculaInmobiliaria": matricula,
-                            "PredioLcTipo_FORMAL":tipo,
-                            "PredioLcTipo_INFORMALIDAD":tipo1,
-                            "ModoAdquisicion_FORMAL":modo,
-                            "ModoAdquisicion_INFORMALIDAD":modo1,
-                            "RazonSocial":RazonSocial
+                            "PredioLcTipo_FORMAL": tipo,
+                            "PredioLcTipo_INFORMALIDAD": tipo1,
+                            "ModoAdquisicion_FORMAL": modo,
+                            "ModoAdquisicion_INFORMALIDAD": modo1,
+                            "RazonSocial": RazonSocial
                         })
 
             if errores:
@@ -946,14 +975,187 @@ class GDBExcelValidator(Frame):
                 df_errores.fillna('', inplace=True)
                 return df_errores
             else:
-                tkMessageBox.showinfo("Validación completada", "No se encontraron errores.")
+                tkMessageBox.showinfo("Validacion completada", u"No se encontraron errores.")
                 return pd.DataFrame()  # vacío si no hay errores
 
         except Exception as e:
-            tkMessageBox.showerror("Error", "No se pudo procesar: {}".format(str(e)))
+            tkMessageBox.showerror("Error", u"No se pudo procesar: {}".format(str(e)))
             print("Error:", e)
             return None
 
+
+    def validar(self, gdb_path):
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_path = os.path.join(gdb_path, feature_class_name)
+        feature_class_name_unidad = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
+        feature_class_path_unidad = os.path.join(gdb_path, feature_class_name_unidad)
+
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(feature_class_path):
+            tkMessageBox.showerror("Error", u"La capa {} no existe en la GDB.".format(feature_class_name))
+            return None
+
+        try:
+            
+            campos = [f.name for f in arcpy.ListFields(feature_class_path_unidad)]
+
+            if "CODIGO_UNIDAD_CONSTRUCCION" not in campos:
+                tkMessageBox.showerror("Error", u"La capa '{}' no contiene el campo 'CODIGO_UNIDAD_CONSTRUCCION'.".format(feature_class_name_unidad))
+                return None
+
+            if "npn_22" not in campos:
+                arcpy.AddField_management(feature_class_path_unidad, "npn_22", "TEXT", "", "", 22)
+
+            arcpy.CalculateField_management(
+                in_table=feature_class_path_unidad,
+                field="npn_22",
+                expression="Left([CODIGO_UNIDAD_CONSTRUCCION], 22)",
+                expression_type="VB"
+            )
+
+            layer_name = "unidadconstruccion_lyr"
+            arcpy.MakeFeatureLayer_management(feature_class_path_unidad, layer_name)
+
+            arcpy.SelectLayerByAttribute_management(
+                in_layer_or_view=layer_name,
+                selection_type="NEW_SELECTION",
+                where_clause="PLANTA_UBICACION BETWEEN 1 AND 80"
+            )
+
+            conteo = int(arcpy.GetCount_management(layer_name).getOutput(0))
+            print("Registros seleccionados (PLANTA_UBICACION 1-80):", conteo)
+
+            dissolve_output = os.path.join(gdb_path, "unidadconstruccion_dissolve_npn22")
+            if conteo > 0:
+                if arcpy.Exists(dissolve_output):
+                    arcpy.Delete_management(dissolve_output)
+
+                arcpy.Dissolve_management(
+                    in_features=layer_name,
+                    out_feature_class=dissolve_output,
+                    dissolve_field="npn_22",
+                    statistics_fields=[["PLANTA_UBICACION", "MAX"]]
+                )
+                print("Dissolve completado:", dissolve_output)
+            else:
+                print("No hay registros con PLANTA_UBICACION entre 1 y 80.")
+                return None
+
+            # --- BUFFER ---
+            construccion_fc = os.path.join(gdb_path, "r_lc_construccion")
+            buffer_output = os.path.join(gdb_path, "r_lc_construccion_buffer_menos_0_5")
+
+            if not arcpy.Exists(construccion_fc):
+                print("La capa 'r_lc_construccion' no existe en la GDB.")
+                return None
+
+            if arcpy.Exists(buffer_output):
+                arcpy.Delete_management(buffer_output)
+
+            arcpy.Buffer_analysis(
+                in_features=construccion_fc,
+                out_feature_class=buffer_output,
+                buffer_distance_or_field="-0.5 Meters",
+                line_side="FULL",
+                line_end_type="ROUND",
+                dissolve_option="NONE",
+                dissolve_field=""
+            )
+            print("Buffer -0.5 m generado:", buffer_output)
+
+            # --- INTERSECT ---
+            intersect_output = os.path.join(gdb_path, "intersect_dissolve_buffer")
+
+            if arcpy.Exists(intersect_output):
+                arcpy.Delete_management(intersect_output)
+
+            arcpy.Intersect_analysis(
+                in_features=[dissolve_output, buffer_output],
+                out_feature_class=intersect_output,
+                join_attributes="ALL",
+                cluster_tolerance="",
+                output_type="INPUT"
+            )
+            print("Intersect generado correctamente:", intersect_output)
+
+            # --- CALCULO DE DIFERENCIA ---
+            campos_intersect = [f.name for f in arcpy.ListFields(intersect_output)]
+            if "Diferencia" not in campos_intersect:
+                arcpy.AddField_management(intersect_output, "Diferencia", "SHORT")
+
+            arcpy.CalculateField_management(
+                in_table=intersect_output,
+                field="Diferencia",
+                expression="[MAX_PLANTA_UBICACION] - [NUMERO_PISOS]",
+                expression_type="VB"
+            )
+            print("Campo 'Diferencia' calculado correctamente.")
+
+            # --- CONVERTIR A DATAFRAME ---
+            fields = ["CODIGO_CONSTRUCCION", "npn_22", "MAX_PLANTA_UBICACION", "NUMERO_PISOS", "Diferencia"]
+            data = [list(row) for row in arcpy.da.SearchCursor(intersect_output, fields)]
+
+            if not data:
+                print("Advertencia: el DataFrame está vacío después de Intersect.")
+                return None
+
+            df = pd.DataFrame(data, columns=fields)
+            return df
+
+        except Exception as e:
+            tkMessageBox.showerror("Error", u"No se pudo procesar: {}".format(str(e)))
+            print("Error:", e)
+            return None
+
+    def extraer_letras_identificador(self, gdb_path):
+
+        feature_class_name_unidad = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
+        feature_class_path_unidad = os.path.join(gdb_path, feature_class_name_unidad)
+
+        try:
+            arcpy.env.workspace = gdb_path
+
+            campos = [f.name for f in arcpy.ListFields(feature_class_path_unidad)]
+            if "IDENTIFICADOR" not in campos:
+                tkMessageBox.showerror("Error", u"La capa '{}' no contiene el campo 'IDENTIFICADOR'.".format(feature_class_name_unidad))
+                return
+
+            if "LETRAS" not in campos:
+                arcpy.AddField_management(feature_class_path_unidad, "LETRAS", "TEXT", "", "", 10)
+
+            # Nueva expresión sin re
+            expression = "extraer_letras(!IDENTIFICADOR!)"
+            code_block = """def extraer_letras(ident):
+                if ident is None:
+                    return ""
+                if ident.startswith("P"):
+                    num = ""
+                    i = 1
+                    while i < len(ident) and ident[i].isdigit():
+                        num += ident[i]
+                        i += 1
+                    letras = ""
+                    while i < len(ident) and ident[i].isalpha():
+                        letras += ident[i]
+                        i += 1
+                    return letras
+                return ""
+            """
+
+            arcpy.CalculateField_management(
+                in_table=feature_class_path_unidad,
+                field="LETRAS",
+                expression=expression,
+                expression_type="PYTHON_9.3",
+                code_block=code_block
+            )
+            print("Campo 'LETRAS' calculado correctamente.")
+
+        except Exception as e:
+            tkMessageBox.showerror("Error", u"No se pudo calcular LETRAS: {}".format(str(e)))
+            print("Error:", e)
+        
     def reporte(self, workbook, reportes_dict, gdb_path):
         sheet_reporte = workbook.add_sheet('Reporte')
 
