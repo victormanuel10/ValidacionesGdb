@@ -183,7 +183,7 @@ class GDBExcelValidator(Frame):
             sheet_npn__unidad_diferente_de_terreno = workbook.add_sheet('Npn Unidad Dif De Terreno')
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
-            sheet_validar = workbook.add_sheet('Numero de pisos')
+            #sheet_validar = workbook.add_sheet('Numero de pisos')
             
             #sheet_reporte=workbook.add_sheet('Reporte')
             headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
@@ -226,6 +226,8 @@ class GDBExcelValidator(Frame):
                 sheet_comisiones.col(col_num).width = (width + 2) * 256  
                 sheet_omisiones.col(col_num).width = (width + 2) * 256  
             df_informalidad_sobre_predio=self.validacion_informalidad_sobre_predio(gdb_path)
+            """
+            
             df_validar=self.validar(gdb_path)
             self.extraer_letras_identificador(gdb_path)
             if df_validar is not None:
@@ -236,6 +238,7 @@ class GDBExcelValidator(Frame):
                     print("Todos tienen diferencia cero.")
             else:
                 print("No se generó DataFrame.")
+            """
             df_diferencias_areas_construidas=self.calcular_areas_construidas()
             df_npns_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
             df_ph_sin_unidad = self.calcular_campos_y_filtrar(gdb_path, self.tipo_area.get())
@@ -259,8 +262,8 @@ class GDBExcelValidator(Frame):
                 u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
                 u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
                 u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
-                u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
-                u"Numero de pisos":df_filtrado_pisos
+                u"Informalidades Sobre Predio": df_informalidad_sobre_predio
+                #u"Numero de pisos":df_filtrado_pisos
             }
             df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
             total_fichas = df_fichas['NroFicha'].nunique()
@@ -342,7 +345,8 @@ class GDBExcelValidator(Frame):
                 for col_num, value in enumerate(row):
                     sheet_npn_validacion_informalidad_sobre_predio.write(row_num, col_num, str(value).decode('utf-8'))
 
-
+            """
+            
             for col_num, column in enumerate(df_filtrado_pisos.columns):
                 sheet_validar.write(0, col_num, column.decode('utf-8'), bold_style)
 
@@ -350,7 +354,7 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_filtrado_pisos.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_validar.write(row_num, col_num, str(value).decode('utf-8'))
-            
+            """
             workbook.save(output_path)
             
             tkMessageBox.showinfo("Éxito".decode('utf-8'), u"Proceso finalizado correctamente.\nArchivos guardados en:\n" +
