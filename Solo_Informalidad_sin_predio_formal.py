@@ -10,7 +10,7 @@ import tkFileDialog
 import tkMessageBox 
 from Tkinter import Frame
 import sys
-import ttk
+
 try:
     reload(sys)
     sys.setdefaultencoding('utf-8')
@@ -84,38 +84,37 @@ class GDBExcelValidator(Frame):
         # Variables para las rutas de archivos
         self.gdb_path = tk.StringVar()
         self.excel_path = tk.StringVar()
-        self.excel_path_bcgs = tk.StringVar()
+        self.excel_path_bcgs=tk.StringVar()
+        # Se define output_excel como StringVar para poder actualizar la ruta de salida
         self.output_excel = tk.StringVar()
+
+
+        # Variable para seleccionar entre Rural y Urbano
         self.tipo_area = tk.StringVar(value="Rural")  # Valor por defecto: Rural
 
-        # ✅ Crear Notebook antes de usarlo
-        self.notebook = ttk.Notebook(parent)
-        self.notebook.pack(fill='both', expand=True)
+        # Botón para seleccionar la GDB
+        tk.Label(root, text="Seleccionar GDB:").pack()
+        tk.Entry(root, textvariable=self.gdb_path, width=50).pack()
+        tk.Button(root, text="Buscar GDB", command=self.select_gdb).pack()
 
-        self.tab_topologia = tk.Frame(self.notebook)
-        self.notebook.add(self.tab_topologia, text="Topología")
+        # Botón para seleccionar el archivo Excel de entrada
+        tk.Label(root, text="Seleccionar Excel:").pack()
+        tk.Entry(root, textvariable=self.excel_path, width=50).pack()
+        tk.Button(root, text="Buscar Excel", command=self.select_excel).pack()
+        
+        tk.Label(root, text="Seleccionar Excel BCGS:").pack()
+        tk.Entry(root, textvariable=self.excel_path_bcgs, width=50).pack()
+        tk.Button(root, text="Buscar Excel BCGS", command=self.select_excel_bcgs).pack()
 
-      
-        btn_validar_topologia = tk.Button(self.tab_topologia, text="Validar Topología", command=self.ejecutar_validacion_topologia)
-        btn_validar_topologia.pack(pady=10)
+        # Radiobuttons para elegir entre Rural y Urbano
+        tk.Label(root, text="Seleccione el tipo de área:").pack()
+        tk.Radiobutton(root, text="Rural", variable=self.tipo_area, value="Rural").pack()
+        tk.Radiobutton(root, text="Urbano", variable=self.tipo_area, value="Urbano").pack()
 
-        tk.Label(parent, text="Seleccionar GDB:").pack()
-        tk.Entry(parent, textvariable=self.gdb_path, width=50).pack()
-        tk.Button(parent, text="Buscar GDB", command=self.select_gdb).pack()
+        # Botón para ejecutar la validación
+        tk.Button(root, text="Ejecutar Validación", command=self.run_validation).pack()
 
-        tk.Label(parent, text="Seleccionar Excel:").pack()
-        tk.Entry(parent, textvariable=self.excel_path, width=50).pack()
-        tk.Button(parent, text="Buscar Excel", command=self.select_excel).pack()
 
-        tk.Label(parent, text="Seleccionar Excel BCGS:").pack()
-        tk.Entry(parent, textvariable=self.excel_path_bcgs, width=50).pack()
-        tk.Button(parent, text="Buscar Excel BCGS", command=self.select_excel_bcgs).pack()
-
-        tk.Label(parent, text="Seleccione el tipo de área:").pack()
-        tk.Radiobutton(parent, text="Rural", variable=self.tipo_area, value="Rural").pack()
-        tk.Radiobutton(parent, text="Urbano", variable=self.tipo_area, value="Urbano").pack()
-
-        tk.Button(parent, text="Ejecutar Validación", command=self.run_validation).pack()
 
     def run_validation(self):
         gdb_path = self.gdb_path.get()
@@ -128,13 +127,15 @@ class GDBExcelValidator(Frame):
         if not output_path:
             tkMessageBox.showerror("Error", "Debe seleccionar una ruta de salida válida antes de continuar.")
             return
-        if not gdb_path or not excel_path:
+        if not gdb_path: #or not excel_path
             tkMessageBox.showerror("Error", "Debe seleccionar la GDB y el archivo Excel.")
             return
 
         feature_class_path = os.path.join(gdb_path, feature_class_name)
 
         try:
+            """
+            
             wb = xlrd.open_workbook(excel_path)
             sheet_comparacion = wb.sheet_by_index(0)
         
@@ -173,19 +174,23 @@ class GDBExcelValidator(Frame):
             omisiones_filtradas = filtrar_omisiones(diff_npn_excel)
 
             # Crear archivo Excel
+            """    
             workbook = xlwt.Workbook()
+            sheet_informalidades_sin_predio_formal = workbook.add_sheet('Informalidades Sin P')
+            
+            """
+            
             sheet_comisiones = workbook.add_sheet('Comisiones')
             sheet_omisiones = workbook.add_sheet('Omisiones')
             sheet_diferencias = workbook.add_sheet('Diferencia Areas Construidas')
             sheet_duplicados = workbook.add_sheet('Npn Duplicados')
             sheet_ph_sin_unidad = workbook.add_sheet('PH sin Unidad Predial')
             sheet_terreno_nro_piso = workbook.add_sheet('Terreno con Nro Piso')
-            sheet_informalidades_sin_predio_formal = workbook.add_sheet('Informalidades Sin P')
             sheet_npn__unidad_diferente_de_terreno = workbook.add_sheet('Npn Unidad Dif De Terreno')
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
             #sheet_validar = workbook.add_sheet('Numero de pisos')
-            
+            """
             #sheet_reporte=workbook.add_sheet('Reporte')
             headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
                     "Terreno o Predios", "Condición Predio", "Edificio", "Número Piso", "Unidad Predial"]
@@ -194,6 +199,8 @@ class GDBExcelValidator(Frame):
             bold_font = xlwt.Font()
             bold_font.bold = True
             bold_style.font = bold_font
+            
+            """
             sheet_comisiones.panes_frozen = True  
             sheet_comisiones.horz_split_pos = 1 
             sheet_omisiones.panes_frozen = True  
@@ -227,7 +234,8 @@ class GDBExcelValidator(Frame):
                 sheet_comisiones.col(col_num).width = (width + 2) * 256  
                 sheet_omisiones.col(col_num).width = (width + 2) * 256  
             df_informalidad_sobre_predio=self.validacion_informalidad_sobre_predio(gdb_path)
-            
+            """
+            """
             
             df_validar=self.validar(gdb_path)
             self.extraer_letras_identificador(gdb_path)
@@ -239,6 +247,9 @@ class GDBExcelValidator(Frame):
                     print("Todos tienen diferencia cero.")
             else:
                 print("No se generó DataFrame.")
+            """
+            df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
+            """
             
             df_diferencias_areas_construidas=self.calcular_areas_construidas()
             df_npns_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
@@ -250,27 +261,39 @@ class GDBExcelValidator(Frame):
             
             
             #print(df_npns_duplicados)
-            df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
+            
             df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
             df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
+            """
             reportes_dict = {
-                u"Comisiones":diff_terreno_codigo,
-                u"Omisiones":omisiones_filtradas,
-                u"Diferencias de area > 2.5": df_diferencias_areas_construidas,
-                u"NPNs Duplicados": df_npns_duplicados,
-                u"PH sin Unidad Predial": df_ph_sin_unidad,
-                u"Terrenos con Numero de Piso": df_terreno_con_nro_piso,
-                u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
-                u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
-                u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
-                u"Informalidades Sobre Predio": df_informalidad_sobre_predio
+                #u"Comisiones":diff_terreno_codigo,
+                #u"Omisiones":omisiones_filtradas,
+                #u"Diferencias de area > 2.5": df_diferencias_areas_construidas,
+                #u"NPNs Duplicados": df_npns_duplicados,
+                #u"PH sin Unidad Predial": df_ph_sin_unidad,
+                #u"Terrenos con Numero de Piso": df_terreno_con_nro_piso,
+                #u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
+                #u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
+                
+                #u"Informalidades Sobre Predio": df_informalidad_sobre_predio
+                
+                u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal
+                
                 #u"Numero de pisos":df_filtrado_pisos
             }
-            df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
-            total_fichas = df_fichas['NroFicha'].nunique()
+            #df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
+            #total_fichas = df_fichas['NroFicha'].nunique()
             # Llamar a la función reporte
             self.reporte(workbook, reportes_dict, gdb_path)
-        
+            for col_num, column in enumerate(df_informalidades_sin_predio_formal.columns):
+                sheet_informalidades_sin_predio_formal.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
+            for row_num, row in enumerate(df_informalidades_sin_predio_formal.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_informalidades_sin_predio_formal.write(row_num, col_num, str(value).decode('utf-8'))
+            
+            """
             
             for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
                     sheet_diferencias.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -310,13 +333,7 @@ class GDBExcelValidator(Frame):
                 for col_num, value in enumerate(row):
                     sheet_ph_sin_unidad.write(row_num, col_num, str(value).decode('utf-8'))
 
-            for col_num, column in enumerate(df_informalidades_sin_predio_formal.columns):
-                sheet_informalidades_sin_predio_formal.write(0, col_num, column.decode('utf-8'), bold_style)
-
-            # Escribir datos
-            for row_num, row in enumerate(df_informalidades_sin_predio_formal.itertuples(index=False), 1):
-                for col_num, value in enumerate(row):
-                    sheet_informalidades_sin_predio_formal.write(row_num, col_num, str(value).decode('utf-8'))
+           
 
             
             for col_num, column in enumerate(df_npn__unidad_diferente_de_terreno.columns):
@@ -345,7 +362,7 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_informalidad_sobre_predio.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_npn_validacion_informalidad_sobre_predio.write(row_num, col_num, str(value).decode('utf-8'))
-
+            """
             """
             
             for col_num, column in enumerate(df_filtrado_pisos.columns):
@@ -364,109 +381,7 @@ class GDBExcelValidator(Frame):
         except Exception as e:
             tkMessageBox.showerror("Error", str(e))
     
-    def ejecutar_validacion_topologia(self):
-        import tkMessageBox
-        import os
-
-        gdb_path = self.gdb_path.get()
-        if not gdb_path or not gdb_path.endswith(".gdb"):
-            tkMessageBox.showerror("Error", "Debe seleccionar una GDB válida.")
-            return
-
-        ruta_excel = os.path.join(os.path.dirname(gdb_path), "reporte_topologia.xls")
-        try:
-            self.validar_topologia(gdb_path, ruta_excel)
-        except Exception as e:
-            tkMessageBox.showerror("Error", "Fallo la validación de topología:\n{}".format(str(e)))
     
-    def validar_topologia(self, gdb_path, output_excel):
-        import arcpy
-        import pandas as pd
-        import os
-        import xlwt
-
-        arcpy.env.workspace = gdb_path
-        arcpy.env.overwriteOutput = True
-
-        reglas = [
-            {"layer1": "Manzanas", "layer2": "Manzanas", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "r_lc_terreno", "layer2": "r_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "u_lc_terreno", "layer2": "u_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "Veredas", "layer2": "Veredas", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "Barrios", "layer2": "Barrios", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "r_lc_terreno", "layer2": "Veredas", "tipo": "covered_by", "regla": "Must Be Covered By"},
-            {"layer1": "u_lc_terreno", "layer2": "Manzanas", "tipo": "covered_by", "regla": "Must Be Covered By"},
-            {"layer1": "Manzanas", "layer2": "u_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap With"},
-            {"layer1": "r_lc_terreno", "layer2": "u_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap With"},
-            {"layer1": "Manzanas", "layer2": "r_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap With"},
-            {"layer1": "Veredas", "layer2": "u_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap With"},
-        ]
-
-        resultados = {}
-
-        for regla in reglas:
-            lyr1 = regla["layer1"]
-            lyr2 = regla["layer2"]
-            tipo = regla["tipo"]
-            nombre_hoja = "{}_{}_{}".format(
-                lyr1, regla["regla"].replace(" ", "_"), lyr2 if lyr1 != lyr2 else "Interno"
-            )[:31]  # Límite de 31 caracteres
-
-            try:
-                capa1 = os.path.join(gdb_path, lyr1)
-                capa2 = os.path.join(gdb_path, lyr2)
-
-                if not arcpy.Exists(capa1) or not arcpy.Exists(capa2):
-                    resultados[nombre_hoja] = pd.DataFrame([{
-                        "Error": "Capa faltante: {} o {}".format(lyr1, lyr2)
-                    }])
-                    continue
-
-                if tipo == "intersect":
-                    # Detectar traslapes
-                    temp_out = os.path.join("in_memory", "intersect_" + lyr1 + "_" + lyr2)
-                    arcpy.Intersect_analysis([capa1, capa2], temp_out, output_type="INPUT")
-                    arcpy.AddGeometryAttributes_management(temp_out, "AREA", Area_Unit="SQUARE_METERS")
-
-                    fields = ["FID_{}".format(lyr1), "FID_{}".format(lyr2), "POLY_AREA"]
-                    rows = []
-                    with arcpy.da.SearchCursor(temp_out, fields) as cursor:
-                        for row in cursor:
-                            if row[2] >= 1:  # Evitar ruidos menores
-                                rows.append({
-                                    "FID_{}".format(lyr1): row[0],
-                                    "FID_{}".format(lyr2): row[1],
-                                    "Area_m2": round(row[2], 2)
-                                })
-
-                    resultados[nombre_hoja] = pd.DataFrame(rows if rows else [{"Resultado": "Sin traslapes detectados"}])
-
-                elif tipo == "covered_by":
-                    # Validar cobertura
-                    arcpy.MakeFeatureLayer_management(capa2, "lyr_cobertura")  # Ej: Manzanas
-                    arcpy.MakeFeatureLayer_management(capa1, "lyr_objetivo")   # Ej: u_lc_terreno
-
-                    arcpy.SelectLayerByLocation_management(
-                        "lyr_objetivo", "ARE_IDENTICAL_TO", "lyr_cobertura", invert_spatial_relationship="INVERT"
-                    )
-
-                    ids = [row[0] for row in arcpy.da.SearchCursor("lyr_objetivo", ["OID@"])]
-                    resultados[nombre_hoja] = pd.DataFrame(
-                        ids if ids else [{"Resultado": "Todos cubiertos correctamente"}],
-                        columns=["OID_{}".format(lyr1)] if ids else None
-                    )
-
-            except Exception as e:
-                resultados[nombre_hoja] = pd.DataFrame([{"Error": str(e)}])
-
-        # Guardar archivo Excel compatible con Python 2.7
-        writer = pd.ExcelWriter(output_excel, engine='xlwt')
-        for hoja, df in resultados.items():
-            df.to_excel(writer, sheet_name=hoja, index=False)
-        writer.save()
-
-        tkMessageBox.showinfo("Validación completada", "Archivo guardado:\n{}".format(output_excel))
-
     def calcular_areas_construidas(self):
         import sys
         reload(sys)
@@ -486,7 +401,7 @@ class GDBExcelValidator(Frame):
             else:
                 tkMessageBox.showerror("Error", "No se encontró ninguna GDB.")
                 return
-        print("calcular_areas_construidas")
+
         arcpy.env.workspace = gdb_path
         arcpy.env.overwriteOutput = True
 
@@ -506,9 +421,6 @@ class GDBExcelValidator(Frame):
 
             df_fichas = pd.merge(df_fichas, df_construcciones[['NroFicha', 'AreaConstruida']],
                                 on='NroFicha', how='left')
-            print(df_construcciones)
-            print(df_fichas)
-
         except Exception as e:
             tkMessageBox.showerror("Error", "No se pudo leer Excel:\n{}".format(str(e)))
             return
@@ -558,7 +470,7 @@ class GDBExcelValidator(Frame):
         #tkMessageBox.showinfo("Exportación completada", "Archivo guardado:\n%s" % output_path)
         return df_filtrada
 
-    
+
     def validar_terreno_codigo_duplicado(self, gdb_path):
         
 
@@ -569,7 +481,7 @@ class GDBExcelValidator(Frame):
 
         if not arcpy.Exists(feature_class_path):
             raise Exception("La capa {feature_class_name} no existe en la GDB.")
-        print("validar_terreno_codigo_duplicado")
+
         fields = [field.name for field in arcpy.ListFields(feature_class_path)]
         if "TERRENO_CODIGO" not in fields:
             raise Exception("La columna 'TERRENO_CODIGO' no existe en la Feature Class.")
@@ -613,7 +525,7 @@ class GDBExcelValidator(Frame):
 
         if not arcpy.Exists(feature_class_path):
             raise Exception("La capa {feature_class_name} no existe en la GDB.")
-        print("calcular_campos_y_filtrar")
+
         # Agregar campos si no existen
         fields = [f.name for f in arcpy.ListFields(feature_class_path)]
         if "CP" not in fields:
@@ -662,7 +574,7 @@ class GDBExcelValidator(Frame):
 
         if not arcpy.Exists(feature_class_path):
             raise Exception("La capa {feature_class_name} no existe en la GDB.")
-        print("validar_terreno_con_piso")
+
         fields = [field.name for field in arcpy.ListFields(feature_class_path)]
 
         if "TERRENO_CODIGO" not in fields:
@@ -710,24 +622,24 @@ class GDBExcelValidator(Frame):
         if not arcpy.Exists(feature_class_path):
             tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name))
             return None  
-        print("copiar_filtrar_buffer_y_join")
+
         # Definir rutas de salida
-        formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado")
-        informal_filtrado_fc = os.path.join(gdb_path, "informal_filtrado")
-        informal_buffer_fc = os.path.join(gdb_path, "informal_buffer")
-        join_output_fc = os.path.join(gdb_path, "informal_buffer_joined")
+        formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado2")
+        informal_filtrado_fc = os.path.join(gdb_path, "informal_filtrado2")
+        informal_buffer_fc = os.path.join(gdb_path, "informal_buffer2")
+        join_output_fc = os.path.join(gdb_path, "informal_buffer_joined2")
 
         try:
             # Copiar y filtrar 'formal' (donde el 22° dígito de TERRENO_CODIGO no es '2')
             query_formal = "SUBSTRING(TERRENO_CODIGO, 22, 1) <> '2'"
-            arcpy.MakeFeatureLayer_management(feature_class_path, "formal_layer", query_formal)
-            arcpy.CopyFeatures_management("formal_layer", formal_filtrado_fc)
+            arcpy.MakeFeatureLayer_management(feature_class_path, "formal_layer2", query_formal)
+            arcpy.CopyFeatures_management("formal_layer2", formal_filtrado_fc)
             #print("Capa 'formal' filtrada y guardada.")
 
             # Copiar y filtrar 'informal' (donde el 22° dígito de TERRENO_CODIGO es '2')
             query_informal = "SUBSTRING(TERRENO_CODIGO, 22, 1) = '2'"
-            arcpy.MakeFeatureLayer_management(feature_class_path, "informal_layer", query_informal)
-            arcpy.CopyFeatures_management("informal_layer", informal_filtrado_fc)
+            arcpy.MakeFeatureLayer_management(feature_class_path, "informal_layer2", query_informal)
+            arcpy.CopyFeatures_management("informal_layer2", informal_filtrado_fc)
             #print("Capa 'informal' filtrada y guardada.")
 
             # Aplicar buffer negativo de -0.5 metros
@@ -790,7 +702,7 @@ class GDBExcelValidator(Frame):
         if not arcpy.Exists(feature_class_path_unidad):
             tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name_unidad))
             return None  
-        print("validar_npn__unidad_diferente_de_terreno")
+
         # Definir rutas de salida
         unidad_puntos_fc = os.path.join(gdb_path, "unidad_puntos")
         formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado")
@@ -907,7 +819,7 @@ class GDBExcelValidator(Frame):
         if not arcpy.Exists(feature_class_path_construccion):
             tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name_construccion))
             return None  
-        print("validar_npn__construccion_diferente_de_terreno")
+
         # Definir rutas de salida
         unidad_puntos_fc = os.path.join(gdb_path, "puntos_construccion")
         formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado_construccion")
@@ -1010,7 +922,7 @@ class GDBExcelValidator(Frame):
         if not arcpy.Exists(feature_class_path):
             tkMessageBox.showerror("Error", u"La capa {} no existe en la GDB.".format(feature_class_name))
             return None  
-        print("validacion_informalidad_sobre_predio")
+
         # Definir rutas de salida
         formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado")
         informal_filtrado_unidad = os.path.join(gdb_path, "informal_filtrado_unidad")
@@ -1046,8 +958,6 @@ class GDBExcelValidator(Frame):
             errores = []
 
             for idx, row in df.iterrows():
-                NroFicha=row.get("NroFicha","")
-                NroFicha1=row.get("NroFicha_1","")
                 terreno = row.get("TERRENO_CODIGO", "")
                 terreno1 = row.get("TERRENO_CODIGO_1", "")
                 modo = row.get("ModoAdquisicion", "")
@@ -1061,10 +971,7 @@ class GDBExcelValidator(Frame):
                     if modo1 != "2|POSESIN" or tipo1 != "Predio.Privado.Privado":
                         errores.append({
                             "Observacion": u"ModoAdquisicion y PredioLcTipo incorrecto para predio informal sobre predio con matricula",
-                            "NroFicha_Formal":NroFicha,
-                            "NroFicha_Informal":NroFicha1,
                             "TERRENO_CODIGO_FORMAL": terreno,
-                            "TERRENO_CODIGO_INFORMAL": terreno1,
                             "MatriculaInmobiliaria": matricula,
                             "PredioLcTipo_FORMAL": tipo,
                             "PredioLcTipo_INFORMALIDAD": tipo1,
@@ -1073,12 +980,9 @@ class GDBExcelValidator(Frame):
                             "RazonSocial": RazonSocial
                         })
                 else:  # Caso 2: sin matricula
-                    if modo1 != "5|OCUPACIN" or tipo1 not in ["Predio.Publico.Presunto_Baldio", "Predio.Publico.Baldio","Predio.Publico.Fiscal_Patrimonial","Predio.Publico.Uso_Publico"]:
+                    if modo1 != "5|OCUPACIN" or tipo1 not in ["Predio.Publico.Presunto_Baldio", "Predio.Publico.Baldio","Predio.Publico.Fiscal_Patrimonial"]:
                         errores.append({
                             "Observacion": u"ModoAdquisicion y PredioLcTipo incorrecto en predio informal sobre predio sin matricula",
-                            "NroFicha_Formal":NroFicha,
-                            "NroFicha_Informal":NroFicha1,
-                            "TERRENO_CODIGO_FORMAL": terreno,
                             "TERRENO_CODIGO_INFORMAL": terreno1,
                             "MatriculaInmobiliaria": matricula,
                             "PredioLcTipo_FORMAL": tipo,
@@ -1091,16 +995,6 @@ class GDBExcelValidator(Frame):
             if errores:
                 df_errores = pd.DataFrame(errores)
                 df_errores.fillna('', inplace=True)
-                df_errores.replace({
-                    "ModoAdquisicion_INFORMALIDAD": {
-                        "5|OCUPACIN": "5|OCUPACION",
-                        "2|POSESIN": "2|POSESION"
-                    },
-                    "ModoAdquisicion_FORMAL": {
-                        "5|OCUPACIN": "5|OCUPACION",
-                        "2|POSESIN": "2|POSESION"
-                    }
-                }, inplace=True)
                 return df_errores
             else:
                 tkMessageBox.showinfo("Validacion completada", u"No se encontraron errores.")
@@ -1111,7 +1005,7 @@ class GDBExcelValidator(Frame):
             print("Error:", e)
             return None
 
-    
+
     def validar(self, gdb_path):
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
         feature_class_path = os.path.join(gdb_path, feature_class_name)
@@ -1235,8 +1129,7 @@ class GDBExcelValidator(Frame):
             tkMessageBox.showerror("Error", u"No se pudo procesar: {}".format(str(e)))
             print("Error:", e)
             return None
-    
-    
+
     def extraer_letras_identificador(self, gdb_path):
 
         feature_class_name_unidad = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
@@ -1284,7 +1177,7 @@ class GDBExcelValidator(Frame):
         except Exception as e:
             tkMessageBox.showerror("Error", u"No se pudo calcular LETRAS: {}".format(str(e)))
             print("Error:", e)
-    
+        
     def reporte(self, workbook, reportes_dict, gdb_path):
         sheet_reporte = workbook.add_sheet('Reporte')
 
@@ -1314,17 +1207,13 @@ class GDBExcelValidator(Frame):
             porcentaje = (float(cantidad) / total_fichas) * 100 if total_fichas else 0
             porcentaje_aprobacion = 100 - porcentaje
 
-            # 🔸 Regla especial para 3 validaciones críticas
-            if descripcion in (u"Comisiones", u"Omisiones", u"Informalidades Sin Predio Formal"):
-                concepto = 'NO CUMPLE' if cantidad > 0 else 'CUMPLE'
+            # Determinar concepto
+            if porcentaje_aprobacion <= 50:
+                concepto = 'NO CUMPLE'
+            elif porcentaje_aprobacion <= 87.5:
+                concepto = 'CUMPLE PARCIAL'
             else:
-                # Concepto normal por porcentaje
-                if porcentaje_aprobacion <= 50:
-                    concepto = 'NO CUMPLE'
-                elif porcentaje_aprobacion <= 87.5:
-                    concepto = 'CUMPLE PARCIAL'
-                else:
-                    concepto = 'CUMPLE'
+                concepto = 'CUMPLE'
 
             # Escribir fila
             sheet_reporte.write(row, 0, descripcion)
