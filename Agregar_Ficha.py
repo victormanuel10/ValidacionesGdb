@@ -524,7 +524,7 @@ class GDBApp:
         except Exception as e:
             tkMessageBox.showerror("Error", "Error al importar o procesar el archivo Excel (unidades):"+ str(e))
 
-    def agregar_propietario_unidad(self):
+    def agregar_propietario_terrno(self):
         """Importar el segundo archivo Excel y realizar la comparación con las feature classes r_lc_unidad y u_lc_unidad."""
         try:
             # Verificar si la geodatabase ha sido seleccionada antes de importar Excel
@@ -820,12 +820,14 @@ class GDBApp:
             self.agregar_ficha_terreno()
             self.agregar_matricula_terreno()
             self.agregar_prediolc_terreno()
+            self.agregar_adquisicion_terreno()
+            self.agregar_propietario_terrno()
+            """
             self.agregar_ficha_unidad()
             self.agregar_matricula_unidad()
             self.agregar_prediolc_unidad()
-            self.agregar_adquisicion_terreno()
             self.agregar_adquisicion_unidad()
-            self.agregar_propietario_unidad()
+            """
             self.import_to_gdb()
             #self.comparar_y_exportar()
 
