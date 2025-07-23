@@ -184,7 +184,7 @@ class GDBExcelValidator(Frame):
             sheet_informalidades_sin_predio_formal = workbook.add_sheet('Informalidades Sin P')
             sheet_npn__unidad_diferente_de_terreno = workbook.add_sheet('Npn Unidad Dif De Terreno')
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
-            #sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
+            sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
             sheet_validar = workbook.add_sheet('Numero de pisos')
             
             #sheet_reporte=workbook.add_sheet('Reporte')
@@ -227,7 +227,7 @@ class GDBExcelValidator(Frame):
             for col_num, width in enumerate(column_widths):
                 sheet_comisiones.col(col_num).width = (width + 2) * 256  
                 sheet_omisiones.col(col_num).width = (width + 2) * 256  
-            #df_informalidad_sobre_predio=self.validacion_informalidad_sobre_predio(gdb_path)
+            df_informalidad_sobre_predio=self.validacion_informalidad_sobre_predio(gdb_path)
             
             
             
@@ -259,9 +259,9 @@ class GDBExcelValidator(Frame):
             df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
             df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
             reportes_dict = {
-                #u"Comisiones":diff_terreno_codigo,
-                #u"Omisiones":omisiones_filtradas,
-                #u"Diferencias de area > 2.5": df_diferencias_areas_construidas,
+                u"Comisiones":diff_terreno_codigo,
+                u"Omisiones":omisiones_filtradas,
+                u"Diferencias de area > 2.5": df_diferencias_areas_construidas,
                 u"NPNs Duplicados": df_npns_duplicados,
                 u"Terreno Duplicados": df_validar_terreno_codigo_duplicado_ficha,
                 u"PH sin Unidad Predial": df_ph_sin_unidad,
@@ -269,7 +269,7 @@ class GDBExcelValidator(Frame):
                 u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
                 u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
                 u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
-                #u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
+                u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
                 u"Numero de pisos":df_filtrado_pisos
             }
             df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
@@ -343,7 +343,7 @@ class GDBExcelValidator(Frame):
                     sheet_npn__construccion_diferente_de_terreno.write(row_num, col_num, str(value).decode('utf-8'))
             
             
-            """
+            
             
             for col_num, column in enumerate(df_informalidad_sobre_predio.columns):
                 sheet_npn_validacion_informalidad_sobre_predio.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -353,7 +353,7 @@ class GDBExcelValidator(Frame):
                 for col_num, value in enumerate(row):
                     sheet_npn_validacion_informalidad_sobre_predio.write(row_num, col_num, str(value).decode('utf-8'))
 
-            """
+            
             
             for col_num, column in enumerate(df_filtrado_pisos.columns):
                 sheet_validar.write(0, col_num, column.decode('utf-8'), bold_style)
