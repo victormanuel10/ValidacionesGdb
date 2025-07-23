@@ -781,7 +781,7 @@ class GDBApp:
                 "Edificios",
                 "FichasPrediales",
                 "ConstruccionesFicha",
-                "CalificacionesConstrucciones",
+                #"CalificacionesConstrucciones",
                 "ConstruccionGeneralFicha",
                 "Propietarios",
             ]
