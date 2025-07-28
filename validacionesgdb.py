@@ -1579,7 +1579,7 @@ class GDBExcelValidator(Frame):
                 if identificador:
                     valor = unicode(identificador).strip()
                     # Acepta P1B1, P1C1, P1AG1, P1CC30, etc.
-                    patron_valido = re.match(ur'^P\d+[A-Z]*\d*$', valor)
+                    patron_valido = re.match(ur'^P\d+[A-ZÑ]*\d*$', valor)
                     if not patron_valido:
                         errores.append([codigo, valor])
                 else:
@@ -1589,7 +1589,15 @@ class GDBExcelValidator(Frame):
         return pd.DataFrame(errores, columns=columnas) if errores else pd.DataFrame(columns=columnas)
 
     def reporte(self, workbook, reportes_dict, gdb_path):
+        import os
+        import arcpy
+        import xlwt
+
         sheet_reporte = workbook.add_sheet('Reporte')
+
+        # Estilo para porcentajes
+        style_porcentaje = xlwt.XFStyle()
+        style_porcentaje.num_format_str = '0.0%'  # un decimal en formato porcentaje
 
         # Determinar la capa según el tipo de área
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
@@ -1641,8 +1649,8 @@ class GDBExcelValidator(Frame):
             # Escribir fila
             sheet_reporte.write(row, 0, descripcion)
             sheet_reporte.write(row, 1, cantidad)
-            sheet_reporte.write(row, 2, '{:.1f}%'.format(porcentaje))
-            sheet_reporte.write(row, 3, '{:.1f}%'.format(porcentaje_aprobacion))
+            sheet_reporte.write(row, 2, porcentaje / 100.0, style_porcentaje)
+            sheet_reporte.write(row, 3, porcentaje_aprobacion / 100.0, style_porcentaje)
             sheet_reporte.write(row, 4, concepto)
             row += 1
 
@@ -1663,10 +1671,9 @@ class GDBExcelValidator(Frame):
         # Fila TOTAL
         sheet_reporte.write(row, 0, 'TOTAL - ' + evaluacion)
         sheet_reporte.write(row, 1, total_cantidad)
-        sheet_reporte.write(row, 2, '{:.1f}%'.format(porcentaje_total))
-        sheet_reporte.write(row, 3, '{:.1f}%'.format(porcentaje_aprob_total))
+        sheet_reporte.write(row, 2, porcentaje_total / 100.0, style_porcentaje)
+        sheet_reporte.write(row, 3, porcentaje_aprob_total / 100.0, style_porcentaje)
         sheet_reporte.write(row, 4, evaluacion)
-
         row += 1
 
         # Agregar ERRORES CRÍTICOS si aplica
