@@ -125,6 +125,9 @@ class GDBExcelValidator(Frame):
         excel_path_bcgs = self.excel_path_bcgs.get()
         
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        feature_class_name_unidad_construccion = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
+        feature_class_name_construccion = "r_lc_construccion" if self.tipo_area.get() == "Rural" else "u_lc_construccion"
+
         self.select_output_excel()
         output_path = self.output_excel.get()
         if not output_path:
@@ -171,7 +174,7 @@ class GDBExcelValidator(Frame):
                     npn for npn in npn_list
                     if len(npn) >= 30 and npn[21] in ('8', '9','0','2') and npn[26:30] == '0000'
                 ]
-
+            self.verificar_geometrias_vacias(feature_class_name_construccion)
             omisiones_filtradas = filtrar_omisiones(diff_npn_excel)
 
             # Crear archivo Excel
@@ -190,8 +193,7 @@ class GDBExcelValidator(Frame):
             sheet_etiqueta = workbook.add_sheet('Etiqueta')
             sheet_identificador_construccion = workbook.add_sheet('Identificador Construccion')
             sheet_identificador_unidad_construccion = workbook.add_sheet('Identificador Unidad Cons')
-            
-            #sheet_validar = workbook.add_sheet('Numero de pisos')
+            sheet_validar = workbook.add_sheet('Numero de pisos')
             
             #sheet_reporte=workbook.add_sheet('Reporte')
             headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
@@ -240,18 +242,20 @@ class GDBExcelValidator(Frame):
             df_validar_terreno_codigo_duplicado_ficha=self.validar_terreno_codigo_duplicado_ficha(gdb_path)
             self.extraer_letras_identificador(gdb_path)
             
-            """
-            df_validar=self.validar(gdb_path)
             
+            df_validar=self.validar(gdb_path)
+            """
             
             if df_validar is not None:
                 df_filtrado_pisos = df_validar[df_validar["Diferencia"] != 0]
-                if not df_filtrado_pisos.empty:
-                    print("Filtrados con diferencia distinta de 0:\n", df_filtrado_pisos)
+                if df_filtrado_pisos is not None and len(df_filtrado_pisos) > 0:
+                    # df_filtrado_pisos tiene filas
+                    print(df_filtrado_pisos)
                 else:
                     print("Todos tienen diferencia cero.")
             else:
                 print("No se generó DataFrame.")
+
             """
             df_diferencias_areas_construidas=self.calcular_areas_construidas()
             df_npns_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
@@ -281,10 +285,10 @@ class GDBExcelValidator(Frame):
                 u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
                 u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
                 u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
-                u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
+                #u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
                 u"Etiqueta":df_etiqueta,
                 u"Identificador Construccion":df_validar_identificador_construccion,
-                u"Identificador Unidad Cons":df_validar_identificador_unidadconstruccion
+                u"Identificador Unidad Cons":df_validar_identificador_unidadconstruccion,
                 #u"Numero de pisos":df_filtrado_pisos
             }
             df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
@@ -343,6 +347,8 @@ class GDBExcelValidator(Frame):
                     sheet_informalidades_sin_predio_formal.write(row_num, col_num, str(value).decode('utf-8'))
 
             
+            
+            
             for col_num, column in enumerate(df_npn__unidad_diferente_de_terreno.columns):
                 sheet_npn__unidad_diferente_de_terreno.write(0, col_num, column.decode('utf-8'), bold_style)
 
@@ -351,6 +357,9 @@ class GDBExcelValidator(Frame):
                 for col_num, value in enumerate(row):
                     sheet_npn__unidad_diferente_de_terreno.write(row_num, col_num, str(value).decode('utf-8'))
 
+            
+            
+            
             
             for col_num, column in enumerate(df_npn__construccion_diferente_de_terreno.columns):
                 sheet_npn__construccion_diferente_de_terreno.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -404,11 +413,13 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_validar_identificador_unidadconstruccion.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_identificador_unidad_construccion.write(row_num, col_num, str(value).decode('utf-8'))
+            
+            
+            
+            
+            
             """
             
-            
-            
-
             for col_num, column in enumerate(df_filtrado_pisos.columns):
                 sheet_validar.write(0, col_num, column.decode('utf-8'), bold_style)
 
@@ -418,7 +429,6 @@ class GDBExcelValidator(Frame):
                     sheet_validar.write(row_num, col_num, str(value).decode('utf-8'))
             
             """
-            
             workbook.save(output_path)
             
             tkMessageBox.showinfo("Éxito".decode('utf-8'), u"Proceso finalizado correctamente.\nArchivos guardados en:\n" +
@@ -601,7 +611,7 @@ class GDBExcelValidator(Frame):
         def calc_porcentaje(row):
             if row['Area_GDB'] == 0:
                 return 0
-            return round(100.0 * (row['Area_GDB'] - row['Area_Excel']) / row['Area_GDB'], 2)
+            return round((row['Area_GDB'] - row['Area_Excel']) / row['Area_GDB'], 4)
 
         df_filtrada['Porcentaje'] = df_filtrada.apply(calc_porcentaje, axis=1)
 
@@ -1032,7 +1042,7 @@ class GDBExcelValidator(Frame):
             if verificar_geometria(feature_class_path_construccion) and verificar_geometria(erase_output_fc):
                     arcpy.Intersect_analysis([feature_class_path_construccion, erase_output_fc], intersect_output_fc, "ALL", "", "INPUT")
             else:
-                print("Algunas capas no tienen geometrias válidas.")
+                print("Algunas capas no tienen geometrias validas.")
             
             arcpy.AddField_management(intersect_output_fc, "TERRENO_22", "TEXT", field_length = 22)
             arcpy.AddField_management(intersect_output_fc, "CONSTRUCCION_22", "TEXT", field_length = 22)
@@ -1475,7 +1485,6 @@ class GDBExcelValidator(Frame):
         return df_rep
     
     def validar_etiqueta(self, gdb_path):
-
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
         feature_class_path = os.path.join(gdb_path, feature_class_name)
         arcpy.env.workspace = gdb_path
@@ -1483,6 +1492,7 @@ class GDBExcelValidator(Frame):
         if not arcpy.Exists(feature_class_path):
             raise Exception("La capa {} no existe en la GDB.".format(feature_class_name))
         print("validar_etiqueta")
+
         campos_necesarios = ["TERRENO_CODIGO", "ETIQUETA"]
         fields = [f.name for f in arcpy.ListFields(feature_class_path)]
         for campo in campos_necesarios:
@@ -1495,15 +1505,22 @@ class GDBExcelValidator(Frame):
             for row in cursor:
                 terreno_codigo = row[0]
                 etiqueta = str(row[1]).strip() if row[1] else ""
+
                 if not terreno_codigo or len(terreno_codigo) < 30:
                     continue
 
                 condicion_predio = terreno_codigo[21]
 
                 if condicion_predio == '8':
-                    etiqueta_esperada = terreno_codigo[26:30]
+                    etiqueta_cruda = terreno_codigo[26:30]
+                    if etiqueta_cruda.startswith('P'):
+                        etiqueta_esperada = etiqueta_cruda  # Se deja tal cual
+                    else:
+                        etiqueta_esperada = etiqueta_cruda.lstrip('0')  # Se eliminan ceros a la izquierda
                 else:
                     etiqueta_esperada = terreno_codigo[17:21]
+                    if not etiqueta_esperada.startswith('P'):
+                        etiqueta_esperada = etiqueta_esperada.lstrip('0')
 
                 if etiqueta != etiqueta_esperada:
                     errores.append([
@@ -1587,7 +1604,22 @@ class GDBExcelValidator(Frame):
 
         columnas = ["CODIGO_UNIDAD_CONSTRUCCION", "IDENTIFICADOR_INVALIDO"]
         return pd.DataFrame(errores, columns=columnas) if errores else pd.DataFrame(columns=columnas)
+    def verificar_geometrias_vacias(self,ruta_fc):
+        """
+        Verifica si hay geometrías vacías (NULL) en una capa.
+        """
+        contador_vacias = 0
 
+        with arcpy.da.SearchCursor(ruta_fc, ["OID@", "SHAPE@"]) as cursor:
+            for oid, geom in cursor:
+                if geom is None or geom.isMultipart and not geom.partCount:
+                    print("Geometría vacía encontrada en el OID:", oid)
+                    contador_vacias += 1
+
+        if contador_vacias == 0:
+            print("No hay geometrías vacías.")
+        else:
+            print("Total de geometrías vacías:", contador_vacias)
     def reporte(self, workbook, reportes_dict, gdb_path):
         import os
         import arcpy
@@ -1595,11 +1627,9 @@ class GDBExcelValidator(Frame):
 
         sheet_reporte = workbook.add_sheet('Reporte')
 
-        # Estilo para porcentajes
         style_porcentaje = xlwt.XFStyle()
-        style_porcentaje.num_format_str = '0.0%'  # un decimal en formato porcentaje
+        style_porcentaje.num_format_str = '0.0%'
 
-        # Determinar la capa según el tipo de área
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
         feature_class_path = os.path.join(gdb_path, feature_class_name)
 
@@ -1618,12 +1648,10 @@ class GDBExcelValidator(Frame):
 
         row = 1
         total_cantidad = 0
-
-        # Validaciones críticas
         errores_criticos_keys = (
-            u"Comisiones", 
-            u"Omisiones", 
-            u"Informalidades Sin Predio Formal", 
+            u"Comisiones",
+            u"Omisiones",
+            u"Informalidades Sin Predio Formal",
             u"Terreno Duplicados"
         )
         errores_criticos_presentes = []
@@ -1636,17 +1664,15 @@ class GDBExcelValidator(Frame):
             porcentaje_aprobacion = 100 - porcentaje
 
             if descripcion in errores_criticos_keys and cantidad > 0:
-                concepto = 'NO CUMPLE'
                 errores_criticos_presentes.append(descripcion)
-            else:
-                if porcentaje_aprobacion <= 50:
-                    concepto = 'NO CUMPLE'
-                elif porcentaje_aprobacion <= 87.5:
-                    concepto = 'CUMPLE PARCIAL'
-                else:
-                    concepto = 'CUMPLE'
 
-            # Escribir fila
+            if porcentaje_aprobacion <= 50:
+                concepto = 'NO CUMPLE'
+            elif porcentaje_aprobacion <= 87.5:
+                concepto = 'CUMPLE PARCIAL'
+            else:
+                concepto = 'CUMPLE'
+
             sheet_reporte.write(row, 0, descripcion)
             sheet_reporte.write(row, 1, cantidad)
             sheet_reporte.write(row, 2, porcentaje / 100.0, style_porcentaje)
@@ -1654,33 +1680,45 @@ class GDBExcelValidator(Frame):
             sheet_reporte.write(row, 4, concepto)
             row += 1
 
-        # Cálculo total
+        # Evaluación final (solo para mostrar texto, la fórmula se hace en Excel)
         porcentaje_total = (float(total_cantidad) / total_fichas) * 100 if total_fichas else 0
         porcentaje_aprob_total = 100 - porcentaje_total
 
-        # Evaluación final
-        if errores_criticos_presentes:
-            evaluacion = 'NO CUMPLE'
-        elif porcentaje_aprob_total <= 50:
+        if porcentaje_aprob_total <= 50:
             evaluacion = 'NO CUMPLE'
         elif porcentaje_aprob_total <= 87.5:
             evaluacion = 'CUMPLE PARCIAL'
         else:
             evaluacion = 'CUMPLE'
 
-        # Fila TOTAL
+        # Celda donde vamos a escribir la evaluación total
         sheet_reporte.write(row, 0, 'TOTAL - ' + evaluacion)
-        sheet_reporte.write(row, 1, total_cantidad)
-        sheet_reporte.write(row, 2, porcentaje_total / 100.0, style_porcentaje)
-        sheet_reporte.write(row, 3, porcentaje_aprob_total / 100.0, style_porcentaje)
+
+        # Rango de filas con datos
+        inicio = 1
+        fin = row - 1  # fila anterior a la de total
+
+        # Sumar columna B (Cantidad total)
+        sheet_reporte.write(row, 1, xlwt.Formula("SUM(B{}:B{})".format(inicio + 1, fin + 1)))
+
+        # Escribimos el total_fichas en una celda oculta para usar en fórmula
+        sheet_reporte.write(0, 25, total_fichas)  # Columna Z (índice 25), fila 0
+        celda_total_fichas = "$Z$1"  # Referencia absoluta
+
+        # Fórmula en columna C (porcentaje de error): =B(row+1)/Z1
+        sheet_reporte.write(row, 2, xlwt.Formula("B{}/{}".format(row + 1, celda_total_fichas)), style_porcentaje)
+
+        # Fórmula en columna D (porcentaje aprobación): =1 - C(row+1)
+        sheet_reporte.write(row, 3, xlwt.Formula("1 - C{}".format(row + 1)), style_porcentaje)
+
+        # Escribimos la evaluación textual también
         sheet_reporte.write(row, 4, evaluacion)
         row += 1
 
-        # Agregar ERRORES CRÍTICOS si aplica
+        # Escribir errores críticos (si hay)
         if errores_criticos_presentes:
             errores_texto = ', '.join(errores_criticos_presentes)
             sheet_reporte.write(row, 0, u'ERRORES CRÍTICOS: ' + errores_texto)
-
     
     def select_gdb(self):
         path = tkFileDialog.askdirectory(title="Seleccionar Geodatabase (GDB)")

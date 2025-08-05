@@ -177,7 +177,7 @@ class GDBExcelValidator(Frame):
             """    
             workbook = xlwt.Workbook()
             sheet_informalidades_sin_predio_formal = workbook.add_sheet('Informalidades Sin P')
-            
+            sheet_duplicados_terreno = workbook.add_sheet('Terreno Duplicados')
             """
             
             sheet_comisiones = workbook.add_sheet('Comisiones')
@@ -265,6 +265,7 @@ class GDBExcelValidator(Frame):
             df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
             df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
             """
+            df_validar_terreno_codigo_duplicado_ficha=self.validar_terreno_codigo_duplicado_ficha(gdb_path)
             reportes_dict = {
                 #u"Comisiones":diff_terreno_codigo,
                 #u"Omisiones":omisiones_filtradas,
@@ -274,7 +275,7 @@ class GDBExcelValidator(Frame):
                 #u"Terrenos con Numero de Piso": df_terreno_con_nro_piso,
                 #u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
                 #u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
-                
+                u"Terreno Duplicados": df_validar_terreno_codigo_duplicado_ficha,
                 #u"Informalidades Sobre Predio": df_informalidad_sobre_predio
                 
                 u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal
@@ -293,6 +294,14 @@ class GDBExcelValidator(Frame):
                 for col_num, value in enumerate(row):
                     sheet_informalidades_sin_predio_formal.write(row_num, col_num, str(value).decode('utf-8'))
             
+
+            for col_num, column in enumerate(df_validar_terreno_codigo_duplicado_ficha.columns):
+                sheet_duplicados_terreno.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
+            for row_num, row in enumerate(df_validar_terreno_codigo_duplicado_ficha.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_duplicados_terreno.write(row_num, col_num, str(value).decode('utf-8'))
             """
             
             for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
@@ -1177,7 +1186,133 @@ class GDBExcelValidator(Frame):
         except Exception as e:
             tkMessageBox.showerror("Error", u"No se pudo calcular LETRAS: {}".format(str(e)))
             print("Error:", e)
+    
+    def validar_terreno_codigo_duplicado_ficha(self, gdb_path):
         
+        # 1. Capa según tipo de área
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        fc = os.path.join(gdb_path, feature_class_name)
+        arcpy.env.workspace = gdb_path
+
+        if not arcpy.Exists(fc):
+            raise Exception("La capa {} no existe en la GDB.".format(feature_class_name))
+
+        # 2. Campos requeridos
+        campos = [f.name for f in arcpy.ListFields(fc)]
+        campos_dict = {f.upper(): f for f in campos}
+        for req in ("TERRENO_CODIGO", "NROFICHA", "CP"):
+            if req not in campos_dict:
+                raise Exception("Falta columna requerida: '{}'".format(req))
+
+        fld_codigo = campos_dict["TERRENO_CODIGO"]
+        fld_ficha  = campos_dict["NROFICHA"]
+        fld_cp     = campos_dict["CP"]
+
+        # 3. Leer todos los registros
+        registros = []
+        cursor_fields = [fld_codigo, fld_ficha, fld_cp]
+        with arcpy.da.SearchCursor(fc, cursor_fields) as cur:
+            for row in cur:
+                codigo = row[0]
+                ficha  = row[1]
+                cp_val = row[2]
+                if not codigo or len(codigo) < 22:
+                    continue
+                condicion = codigo[21]
+                prefijo   = codigo[:21]
+                registros.append({
+                    "codigo":     codigo,
+                    "nroficha":   ficha,
+                    "condicion":  condicion,
+                    "prefijo_21": prefijo,
+                    "cp":         cp_val
+                })
+
+        df = pd.DataFrame(registros)
+
+        # 4. Separar informales (condicion = '2') y resto
+        df_inf   = df[df["condicion"] == '2']
+        df_otros = df[df["condicion"] != '2']
+
+        # 5. Emparejar cada informalidad con su(s) terreno(s) formal(es)
+        emparejamientos = []
+        for idx, inf in df_inf.iterrows():
+            coinc = df_otros[df_otros["prefijo_21"] == inf["prefijo_21"]]
+            for jdx, form in coinc.iterrows():
+                emparejamientos.append({
+                    "informalidad":          inf["codigo"],
+                    "NroFicha_informalidad": inf["nroficha"],
+                    "terreno":               form["codigo"],
+                    "NroFicha_terreno":      form["nroficha"],
+                    "prefijo_21":            inf["prefijo_21"]
+                })
+
+        df_rep = pd.DataFrame(emparejamientos, columns=[
+            "informalidad", "NroFicha_informalidad",
+            "terreno", "NroFicha_terreno", "prefijo_21"
+        ])
+
+        if df_rep.empty:
+            print("No hay informalidades emparejadas.")
+            return df_rep
+
+        # 6. Crear capas temporales
+        layer_formal = "lyr_formal"
+        where_f = "{0} = '0'".format(fld_cp)
+        arcpy.MakeFeatureLayer_management(fc, layer_formal, where_f)
+
+        layer_inf = "lyr_informal"
+        cods = df_rep["informalidad"].unique().tolist()
+        in_clause = ", ".join("'{0}'".format(c) for c in cods)
+        where_i = "{0} IN ({1})".format(fld_codigo, in_clause)
+        arcpy.MakeFeatureLayer_management(fc, layer_inf, where_i)
+
+        # 7. Buffer negativo
+        buf_fc = "in_memory/buffer_inf"
+        arcpy.Buffer_analysis(layer_inf, buf_fc, "-0.5", dissolve_option="NONE")
+
+        # 8. Spatial Join con formales
+        sp_fc = "in_memory/sj_inf_formal"
+        arcpy.SpatialJoin_analysis(
+            buf_fc, layer_formal, sp_fc,
+            join_operation="JOIN_ONE_TO_ONE",
+            join_type="KEEP_COMMON"
+        )
+
+        # 9. Leer el resultado del Spatial Join
+        fld_inf_buf  = fld_codigo
+        fld_for_join = fld_codigo + "_1"
+        fld_fic_join = fld_ficha  + "_1"
+
+        mapping = {}
+        with arcpy.da.SearchCursor(sp_fc, [fld_inf_buf, fld_for_join, fld_fic_join]) as cur2:
+            for row2 in cur2:
+                infc  = row2[0]
+                formc = row2[1]
+                formf = row2[2]
+                mapping[infc] = (formc, formf)
+
+        # 10. Añadir predio formal al reporte
+        df_rep["predio_formal"]  = df_rep["informalidad"].map(lambda c: mapping.get(c, (None, None))[0])
+        df_rep["NroFicha_formal"] = df_rep["informalidad"].map(lambda c: mapping.get(c, (None, None))[1])
+
+        print("Informe de informalidad geográfica generado:")
+
+         # 11. Renombrar y eliminar columnas según tu petición
+        df_rep = df_rep.rename(columns={
+            "terreno":                   "terreno_codigo_duplicado",
+            "predio_formal":             "ubicacion_espacial_informalidad"
+        })
+
+        # Elimina la columna de prefijo de 21 dígitos
+        if "prefijo_21" in df_rep.columns:
+            df_rep = df_rep.drop(["prefijo_21"], axis=1)
+
+        print("Informe de informalidad geográfica (columnas ajustadas):")
+        print(df_rep)
+
+        return df_rep
+    
     def reporte(self, workbook, reportes_dict, gdb_path):
         sheet_reporte = workbook.add_sheet('Reporte')
 
