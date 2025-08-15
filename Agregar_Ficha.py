@@ -822,7 +822,7 @@ class GDBApp:
             self.agregar_prediolc_terreno()
             self.agregar_adquisicion_terreno()
             self.agregar_propietario_terrno()
-            """""
+            """
             self.agregar_ficha_unidad()
             self.agregar_matricula_unidad()
             self.agregar_prediolc_unidad()
