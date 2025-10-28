@@ -296,7 +296,7 @@ class GDBApp:
                                     terreno_codigo]  # Asignar MatriculaInmobiliaria cuando coincida
                                 cursor.updateRow(row)
                                 print(
-                                            "Asignado PredioLcTipo a terreno_codigo " + terreno_codigo + " en " + fc_name)
+                                            "Asignado ModoAdquisicion a terreno_codigo " + terreno_codigo + " en " + fc_name)
 
             #tkMessageBox.showinfo("Éxito", "Datos del archivo Excel importados y actualizados correctamente.")
 
@@ -807,7 +807,6 @@ class GDBApp:
             tkMessageBox.showerror("Error", "Error al importar el archivo Excel: {str(e)}")
 
 
-
     def process_all(self):
         """Función que ejecuta la selección de GDB, agrega campos e importa Excel en orden."""
 
@@ -822,13 +821,13 @@ class GDBApp:
             self.agregar_prediolc_terreno()
             self.agregar_adquisicion_terreno()
             self.agregar_propietario_terrno()
-            """
-            self.agregar_ficha_unidad()
-            self.agregar_matricula_unidad()
-            self.agregar_prediolc_unidad()
-            self.agregar_adquisicion_unidad()
-            self.import_to_gdb()
-            """
+            #self.import_to_gdb()
+            #self.agregar_ficha_unidad()
+            #self.agregar_matricula_unidad()
+            #self.agregar_prediolc_unidad()
+            #self.agregar_adquisicion_unidad()
+            
+            
             #self.comparar_y_exportar()
 
 # Iniciar la aplicación

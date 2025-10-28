@@ -194,8 +194,8 @@ class GDBExcelValidator(Frame):
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
             sheet_etiqueta = workbook.add_sheet('Etiqueta')
-            #sheet_df_comparar_areas_por_unidad = workbook.add_sheet('Comparar Areas por Unidad')
-            sheet_validar = workbook.add_sheet('Numero de pisos')
+            sheet_df_comparar_areas_por_unidad = workbook.add_sheet('Comparar Areas por Unidad')
+            #sheet_validar = workbook.add_sheet('Numero de pisos')
             
             #sheet_reporte=workbook.add_sheet('Reporte')
             headers = ["Npn", "Departamento", "Municipio", "Zona", "Sector", "Comuna", "Barrio", "Manzana o Vereda",
@@ -246,9 +246,9 @@ class GDBExcelValidator(Frame):
             self.extraer_letras_identificador(gdb_path)
             
             
-            df_validar=self.validar(gdb_path)
+            #df_validar=self.validar(gdb_path)
             
-            
+            '''
             if df_validar is not None:
                 df_filtrado_pisos = df_validar[df_validar["Diferencia"] != 0]
                 if df_filtrado_pisos is not None and len(df_filtrado_pisos) > 0:
@@ -257,7 +257,8 @@ class GDBExcelValidator(Frame):
                 else:
                     print("Todos tienen diferencia cero.")
             else:
-                print("No se generó DataFrame.")
+                print("No se generó DataFrame.") 
+                '''
 
             
             
@@ -276,7 +277,7 @@ class GDBExcelValidator(Frame):
             df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
             df_etiqueta=self.validar_etiqueta(gdb_path)
             
-            #df_comparar_areas_por_unidad=self.comparar_areas_por_unidad()
+            df_comparar_areas_por_unidad=self.comparar_areas_por_unidad()
             
             
             reportes_dict = {
@@ -292,8 +293,8 @@ class GDBExcelValidator(Frame):
                 u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
                 u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
                 u"Etiqueta":df_etiqueta,
-                #u"Comparar Areas por Unidad": df_comparar_areas_por_unidad,
-                u"Numero de pisos":df_filtrado_pisos
+                u"Comparar Areas por Unidad": df_comparar_areas_por_unidad,
+                #u"Numero de pisos":df_filtrado_pisos
             }
             
             df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
@@ -406,7 +407,7 @@ class GDBExcelValidator(Frame):
                 for col_num, value in enumerate(row):
                     sheet_etiqueta.write(row_num, col_num, str(value).decode('utf-8'))
             
-
+            '''
             for col_num, column in enumerate(df_filtrado_pisos.columns):
                 sheet_validar.write(0, col_num, column.decode('utf-8'), bold_style)
 
@@ -414,8 +415,7 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_filtrado_pisos.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_validar.write(row_num, col_num, str(value).decode('utf-8'))
-            
-            """
+                    '''
             
             for col_num, column in enumerate(df_comparar_areas_por_unidad.columns):
                 sheet_df_comparar_areas_por_unidad.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -424,7 +424,7 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_comparar_areas_por_unidad.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_df_comparar_areas_por_unidad.write(row_num, col_num, str(value).decode('utf-8'))
-            """
+            
             
             workbook.save(output_path)
             
@@ -540,7 +540,9 @@ class GDBExcelValidator(Frame):
     
 
     def calcular_areas_construidas(self):
-        import sys
+        import sys, os
+        import pandas as pd
+        import arcpy
         reload(sys)
         sys.setdefaultencoding('utf-8')  # Evitar errores de codificación en Python 2.7
 
@@ -558,76 +560,149 @@ class GDBExcelValidator(Frame):
             else:
                 tkMessageBox.showerror("Error", "No se encontró ninguna GDB.")
                 return
+
         print("calcular_areas_construidas")
         arcpy.env.workspace = gdb_path
         arcpy.env.overwriteOutput = True
 
+        # ---- 1) Traer tabla desde GDB (espera columnas CODIGO_UNIDAD_CONSTRUCCION y SHAPE_Area)
         df_unidadconstruccion = extraer_tabla_de_gdb_area_construida(gdb_path, self.tipo_area.get())
-        xl = pd.ExcelFile(excel_path)
-
-        hoja_construcciones = next((h for h in xl.sheet_names if "construcciones" in h.strip().lower()), None)
-        hoja_fichas = next((h for h in xl.sheet_names if "fichas" in h.strip().lower()), None)
-
-        if not hoja_construcciones or not hoja_fichas:
-            tkMessageBox.showerror("Error", "No se encontró la hoja requerida.")
+        if df_unidadconstruccion is None or df_unidadconstruccion.empty:
+            tkMessageBox.showerror("Error", "No se pudo obtener datos de la GDB.")
             return
 
+        # Asegurar columnas clave
+        for col in ["CODIGO_UNIDAD_CONSTRUCCION", "SHAPE_Area"]:
+            if col not in df_unidadconstruccion.columns:
+                tkMessageBox.showerror("Error", "Falta la columna '{}' en datos de GDB.".format(col))
+                return
+
+        # ---- 2) Detectar hojas relevantes en el Excel
+        try:
+            xl = pd.ExcelFile(excel_path)
+        except Exception as e:
+            tkMessageBox.showerror("Error", "No se pudo abrir el Excel:\n{}".format(str(e)))
+            return
+
+        lower_sheets = [h.strip().lower() for h in xl.sheet_names]
+        hoja_construcciones = None
+        hoja_fichas = None
+        for h in xl.sheet_names:
+            l = h.strip().lower()
+            if ("construccion" in l) and hoja_construcciones is None:
+                hoja_construcciones = h
+            if ("ficha" in l) and hoja_fichas is None:
+                # acepta "Fichas" o "Ficha"
+                hoja_fichas = h
+
+        if not hoja_construcciones or not hoja_fichas:
+            tkMessageBox.showerror("Error", "No se encontró la(s) hoja(s) de 'Construcciones' y/o 'Fichas' en el Excel.")
+            return
+
+        # ---- 3) Leer Excel y asegurar tipos
         try:
             df_construcciones = pd.read_excel(excel_path, sheetname=hoja_construcciones)
             df_fichas = pd.read_excel(excel_path, sheetname=hoja_fichas)
-
-            df_fichas = pd.merge(df_fichas, df_construcciones[['NroFicha', 'AreaConstruida']],
-                                on='NroFicha', how='left')
-            
-
         except Exception as e:
             tkMessageBox.showerror("Error", "No se pudo leer Excel:\n{}".format(str(e)))
             return
 
-        df_agrupado_gdb = df_unidadconstruccion.groupby(
-            df_unidadconstruccion['CODIGO_UNIDAD_CONSTRUCCION'].astype(str).str[:22]
-        )['SHAPE_Area'].sum().reset_index().rename(columns={'SHAPE_Area': 'Area_GDB'})
-        
-        df_agrupado_excel = df_fichas.groupby(
-            df_fichas['Npn'].astype(str).str[:22]
-        )['AreaConstruida'].sum().reset_index().rename(columns={'AreaConstruida': 'Area_Excel'})
+        # Columnas requeridas
+        for col in ["NroFicha"]:
+            if col not in df_construcciones.columns and col not in df_fichas.columns:
+                tkMessageBox.showerror("Error", "Falta la columna '{}' en el Excel.".format(col))
+                return
 
-        df_comparacion = pd.merge(df_agrupado_gdb, df_agrupado_excel,
-                                left_on='CODIGO_UNIDAD_CONSTRUCCION',
-                                right_on='Npn', how='inner')
+        # Si no existe AreaConstruida en Construcciones, créala en 0
+        if "AreaConstruida" not in df_construcciones.columns:
+            df_construcciones["AreaConstruida"] = 0
 
-        df_comparacion['Area_GDB'] = pd.to_numeric(df_comparacion['Area_GDB'], errors='coerce').fillna(0).round(2)
-        df_comparacion['Area_Excel'] = pd.to_numeric(df_comparacion['Area_Excel'], errors='coerce').fillna(0).round(2)
-        df_comparacion['Diferencia'] = (df_comparacion['Area_GDB'] - df_comparacion['Area_Excel']).abs()
+        # Asegurar numérico y llenar NaN con 0 (solicitud recurrente tuya)
+        df_construcciones["AreaConstruida"] = pd.to_numeric(df_construcciones["AreaConstruida"], errors='coerce').fillna(0)
+
+        # Agregar AreaConstruida por NroFicha a Fichas
+        if "NroFicha" not in df_construcciones.columns or "NroFicha" not in df_fichas.columns:
+            tkMessageBox.showerror("Error", "No se encuentra 'NroFicha' en ambas hojas para el merge.")
+            return
+
+        df_fichas = df_fichas.merge(
+            df_construcciones[["NroFicha", "AreaConstruida"]],
+            on="NroFicha", how="left"
+        )
+        # Si el merge dejó NaN, convertir a 0
+        df_fichas["AreaConstruida"] = pd.to_numeric(df_fichas["AreaConstruida"], errors='coerce').fillna(0)
+
+        # ---- 4) Agrupar por prefijo (22) en ambos orígenes
+        # GDB
+        df_gdb = df_unidadconstruccion[["CODIGO_UNIDAD_CONSTRUCCION", "SHAPE_Area"]].copy()
+        df_gdb["clave22"] = df_gdb["CODIGO_UNIDAD_CONSTRUCCION"].astype(str).str[:22]
+        df_gdb["Area_GDB"] = pd.to_numeric(df_gdb["SHAPE_Area"], errors='coerce').fillna(0)
+        df_agrupado_gdb = df_gdb.groupby("clave22", as_index=False)["Area_GDB"].sum()
+
+        # Excel (desde Fichas con AreaConstruida ya consolidada)
+        if "Npn" not in df_fichas.columns:
+            tkMessageBox.showerror("Error", "No se encuentra columna 'Npn' en la hoja de Fichas.")
+            return
+        df_excel = df_fichas[["Npn", "AreaConstruida"]].copy()
+        df_excel["clave22"] = df_excel["Npn"].astype(str).str[:22]
+        df_excel["Area_Excel"] = pd.to_numeric(df_excel["AreaConstruida"], errors='coerce').fillna(0)
+        df_agrupado_excel = df_excel.groupby("clave22", as_index=False)["Area_Excel"].sum()
+
+        # ---- 5) Comparación (inner para claves que existan en ambos lados)
+        df_comparacion = df_agrupado_gdb.merge(df_agrupado_excel, on="clave22", how="inner")
+
+        # Redondeos y diferencia
+        df_comparacion["Area_GDB"] = df_comparacion["Area_GDB"].round(2)
+        df_comparacion["Area_Excel"] = df_comparacion["Area_Excel"].round(2)
+        df_comparacion["Diferencia"] = (df_comparacion["Area_GDB"] - df_comparacion["Area_Excel"]).abs().round(2)
+
+        # Renombres para salida
         df_comparacion.rename(columns={
-            'CODIGO_UNIDAD_CONSTRUCCION': 'CODIGO_UNIDAD_CONSTRUCCION (22)',
-            'Npn': 'Npn (22)'
+            "clave22": "CODIGO/NPN (22)"
         }, inplace=True)
-        df_filtrada = df_comparacion[df_comparacion['Diferencia'] > 2.5].copy()
 
-        def calc_porcentaje(row):
-            if row['Area_GDB'] == 0:
-                return 0
-            return round((row['Area_GDB'] - row['Area_Excel']) / row['Area_GDB'], 4)
+        # Filtrar > 2.5 m2
+        df_filtrada = df_comparacion[df_comparacion["Diferencia"] > 2.5].copy()
 
-        df_filtrada['Porcentaje'] = df_filtrada.apply(calc_porcentaje, axis=1)
+        # % diferencia respecto al área GDB (0 si GDB = 0)
+        def _calc_pct(gdb_val, xls_val):
+            if gdb_val == 0:
+                return 0.0
+            return round((gdb_val - xls_val) / float(gdb_val), 4)
 
-        #output_path = os.path.join(os.path.dirname(excel_path), "comparacion_areas.xlsx")
+        df_filtrada["Porcentaje"] = [
+            _calc_pct(g, e) for g, e in zip(df_filtrada["Area_GDB"], df_filtrada["Area_Excel"])
+        ]
 
-        #writer = pd.ExcelWriter(output_path, engine='openpyxl')
-        #df_filtrada.to_excel(writer, index=False, sheet_name="Comparacion")
+        # ---- 6) (Opcional) Exportar a Excel con formato de porcentaje
+        # Descomenta este bloque si quieres exportar el archivo
+        """
+        try:
+            from openpyxl import load_workbook
+            output_path = os.path.join(os.path.dirname(excel_path), "comparacion_areas.xlsx")
+            writer = pd.ExcelWriter(output_path, engine='openpyxl')
 
-        #workbook = writer.book
-        #worksheet = writer.sheets["Comparacion"]
-        # Formato para celdas numéricas con punto decimal
-        #for idx, col in enumerate(['C', 'D', 'E', 'F']):
-        #    worksheet.column_dimensions[col].width = 15
-        #    for cell in worksheet['F'][1:]:  # Saltamos la cabecera
-        #        cell.number_format = '0.00%'
-        #writer.save()
+            df_filtrada.to_excel(writer, index=False, sheet_name="Comparacion")
 
-        #tkMessageBox.showinfo("Exportación completada", "Archivo guardado:\n%s" % output_path)
+            ws = writer.book["Comparacion"]
+            # Ajuste simple de ancho de columnas
+            for col_idx, col_name in enumerate(df_filtrada.columns, 1):
+                ws.column_dimensions[chr(64 + col_idx)].width = max(12, min(30, len(str(col_name)) + 2))
+
+            # Formato porcentaje (columna 'Porcentaje' está al final)
+            from openpyxl.styles import numbers
+            pct_col_idx = df_filtrada.columns.get_loc("Porcentaje") + 1  # 1-based
+            for row in range(2, ws.max_row + 1):  # omite encabezado
+                ws.cell(row=row, column=pct_col_idx).number_format = numbers.FORMAT_PERCENTAGE_00
+
+            writer.save()
+            tkMessageBox.showinfo("Exportación completada", "Archivo guardado:\n%s" % output_path)
+        except Exception as e:
+            tkMessageBox.showwarning("Aviso", "No se pudo exportar a Excel (se devuelve DataFrame):\n{}".format(str(e)))
+        """
+
         return df_filtrada
+
 
     
     def validar_terreno_codigo_duplicado(self, gdb_path):
@@ -859,7 +934,9 @@ class GDBExcelValidator(Frame):
         if not arcpy.Exists(feature_class_path_unidad):
             tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name_unidad))
             return None  
+        
         print("validar_npn__unidad_diferente_de_terreno")
+
         # Definir rutas de salida
         unidad_puntos_fc = os.path.join(gdb_path, "unidad_puntos")
         formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado")
@@ -869,19 +946,42 @@ class GDBExcelValidator(Frame):
         merge_output_fc = os.path.join(gdb_path, "unico")
         intersect_output_fc = os.path.join(gdb_path, "interseccion_unidad")
         intersect_output_fc_filtro= os.path.join(gdb_path, "interseccion_unidad_filtro")
+
         try:
             # Verificar y eliminar capas existentes
-            for fc in [unidad_puntos_fc, formal_filtrado_fc, informal_filtrado_fc, informal_dissolve_fc, erase_output_fc, merge_output_fc, intersect_output_fc]:
+            for fc in [unidad_puntos_fc, formal_filtrado_fc, informal_filtrado_fc, 
+                    informal_dissolve_fc, erase_output_fc, merge_output_fc, intersect_output_fc]:
                 if arcpy.Exists(fc):
                     arcpy.Delete_management(fc)
 
-            # **Convertir la capa de unidad de construcción en puntos**
-            arcpy.FeatureToPoint_management(feature_class_path_unidad, unidad_puntos_fc, "INSIDE")
-            #print("Feature To Point completado: ", unidad_puntos_fc)
+            # -------------------------------------------------------------------
+            # 🔹 VALIDACIÓN Y REPARACIÓN DE GEOMETRÍAS EN UNIDADES
+            # -------------------------------------------------------------------
+            check_table = os.path.join(gdb_path, "unidad_checkgeom")
+            if arcpy.Exists(check_table):
+                arcpy.Delete_management(check_table)
 
-            # Ejecutar Merge (terreno y unidades de construcción en puntos)
+            print("Ejecutando CheckGeometry...")
+            arcpy.CheckGeometry_management(feature_class_path_unidad, check_table)
+
+            print("Ejecutando RepairGeometry...")
+            arcpy.RepairGeometry_management(feature_class_path_unidad, "DELETE_NULL")
+
+            # Crear capa temporal y filtrar polígonos con área válida (> 0)
+            arcpy.MakeFeatureLayer_management(feature_class_path_unidad, "unidad_layer")
+            arcpy.SelectLayerByAttribute_management("unidad_layer", "NEW_SELECTION", "Shape_Area > 0")
+
+            # **Convertir la capa de unidad de construcción en puntos**
+            arcpy.FeatureToPoint_management("unidad_layer", unidad_puntos_fc, "INSIDE")
+            print("Feature To Point completado: ", unidad_puntos_fc)
+            # -------------------------------------------------------------------
+
+            # Ejecutar CopyFeatures sobre terreno
             arcpy.CopyFeatures_management(feature_class_path, merge_output_fc)
-            #print("Copia de terreno completada: ", merge_output_fc)
+
+            # ... 🔽 aquí sigue el resto de tu lógica original sin cambios ...
+            # (filtrar formal/informal, dissolve, erase, append, intersect, etc.)
+            # -------------------------------------------------------------------
 
             # Filtrar 'formal' (donde el 22° dígito de TERRENO_CODIGO no es '2')
             query_formal = "SUBSTRING(TERRENO_CODIGO, 22, 1) <> '2'"
@@ -893,63 +993,51 @@ class GDBExcelValidator(Frame):
             arcpy.MakeFeatureLayer_management(feature_class_path, "informal_layer_npn_unidad", query_informal)
             arcpy.CopyFeatures_management("informal_layer_npn_unidad", informal_filtrado_fc)
 
-            # Ejecutar Dissolve si el campo DIMENSION existe
             campos_dissolve = ["DIMENSION"] if "DIMENSION" in [f.name for f in arcpy.ListFields(informal_filtrado_fc)] else None
             arcpy.Dissolve_management(informal_filtrado_fc, informal_dissolve_fc, campos_dissolve)
-            #print("Dissolve completado: ", informal_dissolve_fc)
 
-            # Ejecutar Erase (descartar áreas de intersección)
             if arcpy.Exists(informal_dissolve_fc) and int(arcpy.GetCount_management(informal_dissolve_fc)[0]) > 0:
                 arcpy.Erase_analysis(merge_output_fc, informal_dissolve_fc, erase_output_fc)
-                #print("Erase completado: ", erase_output_fc)
             else:
-                print("Advertencia: 'informal_dissolved1' no tiene datos o no existe, se omite el Erase.")
-                erase_output_fc = merge_output_fc  # Si no hay intersecciones, usa el merge original
+                print("Advertencia: 'informal_dissolved1' no tiene datos, se omite el Erase.")
+                erase_output_fc = merge_output_fc  
 
-            # Agregar datos de 'informal_filtrado' al resultado final
             if arcpy.Exists(informal_filtrado_fc) and int(arcpy.GetCount_management(informal_filtrado_fc)[0]) > 0:
                 arcpy.Append_management(informal_filtrado_fc, erase_output_fc, "NO_TEST")
-                #print("Datos de 'informal_filtrado' copiados a 'unico'.")
             else:
                 print("Advertencia: 'informal_filtrado' no tiene datos, se omite el Append.")
 
-            # **Ejecutar Intersección entre erase_output_fc y unidad_puntos_fc**
             if arcpy.Exists(feature_class_path) and arcpy.Exists(unidad_puntos_fc):
-        # **Ejecutar Intersección entre erase_output_fc y unidad_puntos_fc**
-                arcpy.Intersect_analysis([unidad_puntos_fc,erase_output_fc], intersect_output_fc, "ALL", "", "INPUT")
-                #print("Intersección completada:", intersect_output_fc)
+                arcpy.Intersect_analysis([unidad_puntos_fc, erase_output_fc], intersect_output_fc, "ALL", "", "INPUT")
             else:
                 print("Error: Una de las capas no existe, intersección omitida.")
+
             arcpy.AddField_management(intersect_output_fc, "CP_U", "TEXT", field_length = 1)
             arcpy.AddField_management(intersect_output_fc, "EDIFICIO_UNIDAD", "TEXT", field_length = 8)
             arcpy.AddField_management(intersect_output_fc, "TERRENO_22", "TEXT", field_length = 22)
             arcpy.AddField_management(intersect_output_fc, "UNIDAD_22", "TEXT", field_length = 22)
             arcpy.AddField_management(intersect_output_fc, "DIFERENCIA", "LONG")
 
-
             arcpy.CalculateField_management(intersect_output_fc, "CP_U", "Mid([CODIGO_UNIDAD_CONSTRUCCION], 22, 1)", "VB")
             arcpy.CalculateField_management(intersect_output_fc, "EDIFICIO_UNIDAD", "Right([CODIGO_UNIDAD_CONSTRUCCION],8)", "VB")
             arcpy.CalculateField_management(intersect_output_fc, "TERRENO_22", "Left([TERRENO_CODIGO],22)", "VB")
             arcpy.CalculateField_management(intersect_output_fc, "UNIDAD_22", "Left([CODIGO_UNIDAD_CONSTRUCCION],22)", "VB")
             arcpy.CalculateField_management(intersect_output_fc, "DIFERENCIA", "[TERRENO_22] = [UNIDAD_22]", "VB")
+
             query_filtro = "DIFERENCIA = 0"
             arcpy.MakeFeatureLayer_management(intersect_output_fc, "temp_layer_name_unidad_dif", query_filtro)
             arcpy.CopyFeatures_management("temp_layer_name_unidad_dif", intersect_output_fc_filtro)
 
             query_filtro_eliminar = "CP_U = '2' AND EDIFICIO_UNIDAD <> '00000000'"
             arcpy.MakeFeatureLayer_management(intersect_output_fc_filtro, "temp_layer_name_eliminar_unidad", query_filtro_eliminar)
-
-            # Eliminar los registros de la capa filtrada intersect_output_fc_filtro
             arcpy.DeleteRows_management("temp_layer_name_eliminar_unidad")
-
-            # Eliminar la capa temporal después de su uso
             arcpy.Delete_management("temp_layer_name_eliminar_unidad")
 
             fields = [field.name for field in arcpy.ListFields(intersect_output_fc_filtro)]
             data = [list(row) for row in arcpy.da.SearchCursor(intersect_output_fc_filtro, fields)] if arcpy.Exists(intersect_output_fc_filtro) else []
             df = pd.DataFrame(data, columns=fields)
             df = df[['TERRENO_CODIGO','CODIGO_UNIDAD_CONSTRUCCION']]
-            #print(df)
+
             if df.empty:
                 print("Advertencia: el DataFrame está vacío después del filtro.")
 
@@ -1128,9 +1216,25 @@ class GDBExcelValidator(Frame):
 
 
                 if matricula: # Caso 1: tiene matricula
-                    if modo1 != "2|POSESIN" or tipo1 != "Predio.Privado.Privado":
+
+                    if modo != "1|DOMINIO (TRADICION)":                    
                         errores.append({
-                            "Observacion": u"ModoAdquisicion o PredioLcTipo incorrecto para predio informal sobre predio con matricula",
+                            "Observacion": u"Modo de adquisicion incorrecto para predio formal",
+                            "NroFicha_Formal":NroFicha,
+                            "NroFicha_Informal":NroFicha1,
+                            "TERRENO_CODIGO_FORMAL": terreno,
+                            "TERRENO_CODIGO_INFORMAL": terreno1,
+                            "MatriculaInmobiliaria": matricula,
+                            "PredioLcTipo_FORMAL": tipo,
+                            "PredioLcTipo_INFORMALIDAD": tipo1,
+                            "ModoAdquisicion_FORMAL": modo,
+                            "ModoAdquisicion_INFORMALIDAD": modo1,
+                            "RazonSocial": RazonSocial
+                        })
+                        
+                    if modo1 != "2|POSESIN":
+                        errores.append({
+                            "Observacion": u"ModoAdquisicion incorrecto para predio informal sobre predio con matricula",
                             "NroFicha_Formal": NroFicha,
                             "NroFicha_Informal": NroFicha1,
                             "TERRENO_CODIGO_FORMAL": terreno,
@@ -1143,11 +1247,25 @@ class GDBExcelValidator(Frame):
                             "RazonSocial": RazonSocial
                         })
 
-                else:  # Caso 2: sin matricula
-                    if (RazonSocial != "LA NACION" or "MUNICIPIO" not in RazonSocial.upper()) or \
-                    (modo1 != "5|OCUPACIN" or tipo1 not in ["Predio.Publico.Presunto_Baldio", "Predio.Publico.Baldio","Predio.Publico.Fiscal_Patrimonial","Predio.Publico.Uso_Publico"]):
+                    '''if tipo1 != "Predio.Privado.Privado":
                         errores.append({
-                            "Observacion": u"ModoAdquisicion o PredioLcTipo incorrecto en predio informal sobre predio sin matricula",
+                            "Observacion": u"PredioLcTipo incorrecto para predio informal sobre predio con matricula",
+                            "NroFicha_Formal": NroFicha,
+                            "NroFicha_Informal": NroFicha1,
+                            "TERRENO_CODIGO_FORMAL": terreno,
+                            "TERRENO_CODIGO_INFORMAL": terreno1,
+                            "MatriculaInmobiliaria": matricula,
+                            "PredioLcTipo_FORMAL": tipo,
+                            "PredioLcTipo_INFORMALIDAD": tipo1,
+                            "ModoAdquisicion_FORMAL": modo,
+                            "ModoAdquisicion_INFORMALIDAD": modo1,
+                            "RazonSocial": RazonSocial
+                        })'''
+
+                else:  # Caso 2: sin matricula
+                    if modo != "1|DOMINIO (TRADICION)":                    
+                        errores.append({
+                            "Observacion": u"Modo de adquisicion incorrecto para predio formal",
                             "NroFicha_Formal":NroFicha,
                             "NroFicha_Informal":NroFicha1,
                             "TERRENO_CODIGO_FORMAL": terreno,
@@ -1159,6 +1277,22 @@ class GDBExcelValidator(Frame):
                             "ModoAdquisicion_INFORMALIDAD": modo1,
                             "RazonSocial": RazonSocial
                         })
+                    
+                    if modo1 != "5|OCUPACIN":
+                        errores.append({
+                            "Observacion": u"ModoAdquisicion incorrecto en predio informal sobre predio sin matricula",
+                            "NroFicha_Formal":NroFicha,
+                            "NroFicha_Informal":NroFicha1,
+                            "TERRENO_CODIGO_FORMAL": terreno,
+                            "TERRENO_CODIGO_INFORMAL": terreno1,
+                            "MatriculaInmobiliaria": matricula,
+                            "PredioLcTipo_FORMAL": tipo,
+                            "PredioLcTipo_INFORMALIDAD": tipo1,
+                            "ModoAdquisicion_FORMAL": modo,
+                            "ModoAdquisicion_INFORMALIDAD": modo1,
+                            "RazonSocial": RazonSocial
+                        })
+                    
 
             if errores:
                 df_errores = pd.DataFrame(errores)
@@ -1510,8 +1644,11 @@ class GDBExcelValidator(Frame):
                     continue
 
                 condicion_predio = terreno_codigo[21]
+                unidad_terreno = terreno_codigo[26:30]
+                print(terreno_codigo)
+                print(unidad_terreno)
 
-                if condicion_predio == '8':
+                if condicion_predio == '8' and unidad_terreno not in ('0000'):
                     etiqueta_cruda = terreno_codigo[26:30]
                     if etiqueta_cruda.startswith('P'):
                         etiqueta_esperada = etiqueta_cruda  # Se deja tal cual
@@ -1539,6 +1676,7 @@ class GDBExcelValidator(Frame):
         import os, sys, pandas as pd, arcpy
         import Tkinter as tk
         import tkMessageBox as tkMessageBox
+        import re
 
         try:
             reload(sys); sys.setdefaultencoding('utf-8')
@@ -1551,23 +1689,92 @@ class GDBExcelValidator(Frame):
             try:
                 return unicode("" if x is None else x).strip()
             except:
-                try: return unicode(str(x)).strip()
-                except: return u""
+                try:
+                    return unicode(str(x)).strip()
+                except:
+                    return u""
+
+        def letras_a_num(col_letras):
+            """
+            Convierte 'A'->'1', 'B'->'2', ..., 'Z'->'26', 'AA'->'27', etc.
+            Devuelve string.
+            Si encuentra algo que no son solo letras, devuelve tal cual.
+            """
+            if not col_letras:
+                return u""
+            col_up = col_letras.upper()
+            # Debe ser solo letras
+            if not re.match(r'^[A-Z]+$', col_up):
+                return col_letras
+            total = 0
+            for ch in col_up:
+                total = total * 26 + (ord(ch) - ord('A') + 1)
+            return unicode(total)
+
+        def extraer_letra_identificador(id_raw):
+            """
+            De 'P1B1' -> 'B'
+            De 'P12C3' -> 'C'
+            De 'B2' -> 'B'
+            De 'U10AA7' -> 'AA'
+            Regla: tomar el bloque de letras que está entre números,
+            o el primer bloque de letras si no hay números claros.
+            """
+            v = _s(id_raw)
+            if not v:
+                return v
+
+            # 1) Buscar patrón típico piso + letras + resto numérico, ej 'P1B1', 'P12AA7'
+            m = re.search(r'\d+([A-Za-z]+)\d+', v)
+            if m:
+                return m.group(1)
+
+            # 2) Si no, buscar cualquier bloque de letras en el identificador
+            m2 = re.search(r'([A-Za-z]+)', v)
+            if m2:
+                return m2.group(1)
+
+            # 3) Si no encontramos letras, devolvemos vacío
+            return u""
+
+        def normalizar_identificador_a_indice(id_raw):
+            """
+            Toma IDENTIFICADOR completo ('P1B1') y devuelve solo el índice numérico que
+            debe compararse con NumeroConstruccion del Excel.
+            Ej:
+              'P1B1' -> '2'
+              'P1A1' -> '1'
+              'P1AA1' -> '27'
+            Si no puede calcularlo, devuelve el original como string.
+            """
+            letras = extraer_letra_identificador(id_raw)  # 'B'
+            if letras:
+                return letras_a_num(letras)               # '2'
+            # fallback: si no hay letras, intentemos número puro
+            v = _s(id_raw)
+            mnum = re.search(r'(\d+)$', v)
+            if mnum:
+                return unicode(int(mnum.group(1)))
+            return v
 
         gdb_path = self.gdb_path.get()
         excel_path = self.excel_path.get()
 
         if not excel_path:
-            tkMessageBox.showerror("Error", u"Debe seleccionar el Excel."); return
+            tkMessageBox.showerror("Error", u"Debe seleccionar el Excel.")
+            return
         if not gdb_path:
-            tkMessageBox.showerror("Error", u"Debe seleccionar la GDB o carpeta contenedora."); return
+            tkMessageBox.showerror("Error", u"Debe seleccionar la GDB o carpeta contenedora.")
+            return
 
+        # Si el usuario apuntó a carpeta en vez de .gdb/.sde, toma la primera .gdb
         if not gdb_path.lower().endswith(".gdb") and not gdb_path.lower().endswith(".sde"):
             gdbs = [f for f in os.listdir(gdb_path) if f.lower().endswith(".gdb")]
             if gdbs:
                 gdb_path = os.path.join(gdb_path, gdbs[0])
             else:
-                tkMessageBox.showerror("Error", u"No se encontró ninguna GDB."); return
+                tkMessageBox.showerror("Error", u"No se encontró ninguna GDB.")
+                return
 
         arcpy.env.workspace = gdb_path
         arcpy.env.overwriteOutput = True
@@ -1576,27 +1783,43 @@ class GDBExcelValidator(Frame):
         try:
             df_uc = extraer_tabla_de_gdb_area_construida(gdb_path, self.tipo_area.get())
         except Exception as e:
-            tkMessageBox.showerror("Error", u"No se pudo leer la tabla de la GDB:\n{}".format(e)); return
+            tkMessageBox.showerror("Error", u"No se pudo leer la tabla de la GDB:\n{}".format(e))
+            return
 
         df_uc.columns = [c.strip() for c in df_uc.columns]
+
+        # usamos CODIGO_UNIDAD_CONSTRUCCION (confirmado)
         req_gdb = ['CODIGO_UNIDAD_CONSTRUCCION', 'IDENTIFICADOR', 'SHAPE_Area']
         faltan_gdb = [c for c in req_gdb if c not in df_uc.columns]
         if faltan_gdb:
-            tkMessageBox.showerror("Error", u"En la tabla GDB faltan: {}".format(", ".join(faltan_gdb))); return
+            tkMessageBox.showerror("Error", u"En la tabla GDB faltan: {}".format(", ".join(faltan_gdb)))
+            return
 
+        # Paso clave:
+        # IDENTIFICADOR -> extraer letra(s) -> convertir letra(s) a número tipo 2,3,4...
+        df_uc['IDX_UNIDAD'] = df_uc['IDENTIFICADOR'].apply(normalizar_identificador_a_indice)
+
+        # CLAVE GDB = CODIGO_UNIDAD_CONSTRUCCION + SEP + IDX_UNIDAD
         df_uc['CLAVE'] = df_uc.apply(
-            lambda r: u"{}{}{}".format(_s(r['CODIGO_UNIDAD_CONSTRUCCION']), SEP, _s(r['IDENTIFICADOR'])),
+            lambda r: u"{}{}{}".format(
+                _s(r['CODIGO_UNIDAD_CONSTRUCCION']),
+                SEP,
+                _s(r['IDX_UNIDAD'])
+            ),
             axis=1
         )
+
         df_uc['Area_GDB'] = pd.to_numeric(df_uc['SHAPE_Area'], errors='coerce')
-        # Agrupar SOLO la GDB
+
+        # Agrupar áreas de la GDB por esa clave
         df_gdb = df_uc.groupby('CLAVE', as_index=False)['Area_GDB'].sum()
 
-        # -------- Excel (SIN AGRUPAR) --------
+        # -------- EXCEL (SIN AGRUPAR) --------
         try:
             xl = pd.ExcelFile(excel_path)
         except Exception as e:
-            tkMessageBox.showerror("Error", u"No se pudo abrir el Excel:\n{}".format(e)); return
+            tkMessageBox.showerror("Error", u"No se pudo abrir el Excel:\n{}".format(e))
+            return
 
         def _find_sheet(xlfile, snippet):
             lst = [h for h in xlfile.sheet_names if snippet in h.strip().lower()]
@@ -1606,7 +1829,8 @@ class GDBExcelValidator(Frame):
         hoja_fichas = _find_sheet(xl, 'fichas')
 
         if not hoja_cons:
-            tkMessageBox.showerror("Error", u"No se encontró la hoja 'Construcciones'."); return
+            tkMessageBox.showerror("Error", u"No se encontró la hoja 'Construcciones'.")
+            return
 
         df_cons = pd.read_excel(excel_path, sheetname=hoja_cons)
         df_cons.columns = [c.strip() for c in df_cons.columns]
@@ -1614,46 +1838,75 @@ class GDBExcelValidator(Frame):
         req_cons_base = ['NumeroConstruccion', 'AreaConstruida']
         faltan_cons_base = [c for c in req_cons_base if c not in df_cons.columns]
         if faltan_cons_base:
-            tkMessageBox.showerror("Error", u"En 'Construcciones' faltan: {}".format(", ".join(faltan_cons_base))); return
+            tkMessageBox.showerror("Error", u"En 'Construcciones' faltan: {}".format(", ".join(faltan_cons_base)))
+            return
 
-        # Si no está Npn en Construcciones, intento recuperarlo de Fichas (merge por NroFicha)
+        # Recuperar Npn si hace falta
         if 'Npn' in df_cons.columns:
             df_src = df_cons.copy()
         else:
             if not hoja_fichas:
-                tkMessageBox.showerror("Error", u"No se encontró 'Npn' en 'Construcciones' y no hay hoja 'Fichas' para recuperarlo."); return
+                tkMessageBox.showerror("Error", u"No se encontró 'Npn' en 'Construcciones' y no hay hoja 'Fichas' para recuperarlo.")
+                return
+
             df_fich = pd.read_excel(excel_path, sheetname=hoja_fichas)
             df_fich.columns = [c.strip() for c in df_fich.columns]
-            if 'Npn' not in df_fich.columns or 'NroFicha' not in df_fich.columns or 'NroFicha' not in df_cons.columns:
-                tkMessageBox.showerror("Error", u"No se pudo recuperar 'Npn': verifique 'NroFicha' y 'Npn' en 'Fichas'."); return
-            df_src = pd.merge(df_cons, df_fich[['NroFicha', 'Npn']], on='NroFicha', how='left')
 
-        # Construyo CLAVE pero NO agrupo Excel
+            if 'Npn' not in df_fich.columns or 'NroFicha' not in df_fich.columns or 'NroFicha' not in df_cons.columns:
+                tkMessageBox.showerror("Error", u"No se pudo recuperar 'Npn': verifique 'NroFicha' y 'Npn' en 'Fichas'.")
+                return
+
+            df_src = pd.merge(
+                df_cons,
+                df_fich[['NroFicha', 'Npn']],
+                on='NroFicha',
+                how='left'
+            )
+
+        # En Excel:
+        # - Npn = mismo código largo
+        # - NumeroConstruccion = 1,2,3,...
         df_src['Npn'] = df_src['Npn'].map(_s)
         df_src['NumeroConstruccion'] = df_src['NumeroConstruccion'].map(_s)
-        df_src['CLAVE'] = df_src.apply(lambda r: u"{}{}{}".format(_s(r['Npn']), SEP, _s(r['NumeroConstruccion'])), axis=1)
+
+        # CLAVE Excel = Npn + SEP + NumeroConstruccion
+        df_src['CLAVE'] = df_src.apply(
+            lambda r: u"{}{}{}".format(
+                _s(r['Npn']),
+                SEP,
+                _s(r['NumeroConstruccion'])
+            ),
+            axis=1
+        )
+
         df_src['Area_Excel'] = pd.to_numeric(df_src['AreaConstruida'], errors='coerce')
 
-        # -------- Comparación (full outer) --------
-        # Nota: como Excel no se agrupa, puede haber varias filas por CLAVE (se verán todas).
-        df_out = pd.merge(df_src[['CLAVE', 'Area_Excel']], df_gdb, on='CLAVE', how='outer')
+        # -------- Comparación (outer join) --------
+        df_out = pd.merge(
+            df_src[['CLAVE', 'Area_Excel']],
+            df_gdb,
+            on='CLAVE',
+            how='outer'
+        )
 
-        # Cálculo de diferencia por fila
+        # Calcular diferencia de áreas
         df_out['Area_GDB']   = pd.to_numeric(df_out.get('Area_GDB'), errors='coerce')
         df_out['Area_Excel'] = pd.to_numeric(df_out.get('Area_Excel'), errors='coerce')
         df_out['Diferencia'] = (df_out['Area_GDB'] - df_out['Area_Excel']).abs()
 
-        # Redondeo
+        # Redondeo a 2 decimales
         for col in ['Area_GDB', 'Area_Excel', 'Diferencia']:
             if col in df_out.columns:
                 df_out[col] = df_out[col].round(2)
 
+        # Si solo_diferentes=True, filtramos para reporte
         if solo_diferentes:
             mask_dif     = df_out['Diferencia'].notnull() & (df_out['Diferencia'] != 0)
             mask_nocruce = df_out['Diferencia'].isnull()
             df_out = df_out[mask_dif | mask_nocruce]
 
         df_out['NPN_NRO_CONSTRUCCION'] = df_out['CLAVE']
+
         return df_out[['NPN_NRO_CONSTRUCCION', 'Area_GDB', 'Area_Excel', 'Diferencia']]
     def verificar_geometrias_vacias(self,ruta_fc):
         """
