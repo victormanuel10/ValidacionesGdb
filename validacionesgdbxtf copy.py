@@ -238,12 +238,12 @@ class GDBExcelValidator(Frame):
                 sheet_comisiones.col(col_num).width = (width + 2) * 256  
                 sheet_omisiones.col(col_num).width = (width + 2) * 256  
             
-            df_informalidad_sobre_predio=self.validacion_informalidad_sobre_predio(gdb_path)
+            #df_informalidad_sobre_predio=self.validacion_informalidad_sobre_predio(gdb_path)
             
             
             
-            df_validar_terreno_codigo_duplicado_ficha=self.validar_terreno_codigo_duplicado_ficha(gdb_path)
-            self.extraer_letras_identificador(gdb_path)
+            #df_validar_terreno_codigo_duplicado_ficha=self.validar_terreno_codigo_duplicado_ficha(gdb_path)
+            #self.extraer_letras_identificador(gdb_path)
             
             
             #df_validar=self.validar(gdb_path)
@@ -262,20 +262,20 @@ class GDBExcelValidator(Frame):
 
             
             
-            df_diferencias_areas_construidas=self.calcular_areas_construidas()
-            df_npns_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
-            df_ph_sin_unidad = self.calcular_campos_y_filtrar(gdb_path, self.tipo_area.get())
-            df_terreno_con_nro_piso= self.validar_terreno_con_piso(gdb_path, self.tipo_area.get())
+            #df_diferencias_areas_construidas=self.calcular_areas_construidas()
+            #df_npns_duplicados = self.validar_terreno_codigo_duplicado(gdb_path)
+            #df_ph_sin_unidad = self.calcular_campos_y_filtrar(gdb_path, self.tipo_area.get())
+            #df_terreno_con_nro_piso= self.validar_terreno_con_piso(gdb_path, self.tipo_area.get())
             #print("df_terreno_con_nro_piso")
             #print (df_terreno_con_nro_piso)
             #df_terreno_con_nro_piso = pd.DataFrame(terreno_con_nro_piso, columns=["TERRENO_CODIGO_Con_Nro_Piso"])
             
             
             #print(df_npns_duplicados)
-            df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
-            df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
-            df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
-            df_etiqueta=self.validar_etiqueta(gdb_path)
+            #df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
+            #df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
+            #df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
+            #df_etiqueta=self.validar_etiqueta(gdb_path)
             
             df_comparar_areas_por_unidad=self.comparar_areas_por_unidad()
             
@@ -283,16 +283,16 @@ class GDBExcelValidator(Frame):
             reportes_dict = {
                 u"Comisiones":diff_terreno_codigo,
                 u"Omisiones":omisiones_filtradas,
-                u"Diferencias de area > 2.5": df_diferencias_areas_construidas,
-                u"NPNs Duplicados": df_npns_duplicados,
-                u"Terreno Duplicados": df_validar_terreno_codigo_duplicado_ficha,
-                u"PH sin Unidad Predial": df_ph_sin_unidad,
-                u"Terrenos con Numero de Piso": df_terreno_con_nro_piso,
-                u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
-                u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
-                u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
-                u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
-                u"Etiqueta":df_etiqueta,
+                #u"Diferencias de area > 2.5": df_diferencias_areas_construidas,
+                #u"NPNs Duplicados": df_npns_duplicados,
+                #u"Terreno Duplicados": df_validar_terreno_codigo_duplicado_ficha,
+                #u"PH sin Unidad Predial": df_ph_sin_unidad,
+                #u"Terrenos con Numero de Piso": df_terreno_con_nro_piso,
+                #u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
+                #u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
+                #u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
+                #u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
+                #u"Etiqueta":df_etiqueta,
                 u"Comparar Areas por Unidad": df_comparar_areas_por_unidad,
                 #u"Numero de pisos":df_filtrado_pisos
             }
@@ -307,6 +307,7 @@ class GDBExcelValidator(Frame):
             
             
             
+            """
             
             for col_num, column in enumerate(df_diferencias_areas_construidas.columns):
                     sheet_diferencias.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -406,7 +407,7 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_etiqueta.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_etiqueta.write(row_num, col_num, str(value).decode('utf-8'))
-            
+            """
             '''
             for col_num, column in enumerate(df_filtrado_pisos.columns):
                 sheet_validar.write(0, col_num, column.decode('utf-8'), bold_style)
@@ -1913,6 +1914,7 @@ class GDBExcelValidator(Frame):
         df_out['NPN_NRO_CONSTRUCCION'] = df_out['CLAVE']
 
         return df_out[['NPN_NRO_CONSTRUCCION', 'Area_GDB', 'Area_Excel', 'Diferencia']]
+
     def verificar_geometrias_vacias(self,ruta_fc):
         """
         Verifica si hay geometrías vacías (NULL) en una capa.

@@ -1676,7 +1676,6 @@ class GDBExcelValidator(Frame):
         import os, sys, pandas as pd, arcpy
         import Tkinter as tk
         import tkMessageBox as tkMessageBox
-        import re
 
         try:
             reload(sys); sys.setdefaultencoding('utf-8')
@@ -1689,92 +1688,23 @@ class GDBExcelValidator(Frame):
             try:
                 return unicode("" if x is None else x).strip()
             except:
-                try:
-                    return unicode(str(x)).strip()
-                except:
-                    return u""
-
-        def letras_a_num(col_letras):
-            """
-            Convierte 'A'->'1', 'B'->'2', ..., 'Z'->'26', 'AA'->'27', etc.
-            Devuelve string.
-            Si encuentra algo que no son solo letras, devuelve tal cual.
-            """
-            if not col_letras:
-                return u""
-            col_up = col_letras.upper()
-            # Debe ser solo letras
-            if not re.match(r'^[A-Z]+$', col_up):
-                return col_letras
-            total = 0
-            for ch in col_up:
-                total = total * 26 + (ord(ch) - ord('A') + 1)
-            return unicode(total)
-
-        def extraer_letra_identificador(id_raw):
-            """
-            De 'P1B1' -> 'B'
-            De 'P12C3' -> 'C'
-            De 'B2' -> 'B'
-            De 'U10AA7' -> 'AA'
-            Regla: tomar el bloque de letras que está entre números,
-            o el primer bloque de letras si no hay números claros.
-            """
-            v = _s(id_raw)
-            if not v:
-                return v
-
-            # 1) Buscar patrón típico piso + letras + resto numérico, ej 'P1B1', 'P12AA7'
-            m = re.search(r'\d+([A-Za-z]+)\d+', v)
-            if m:
-                return m.group(1)
-
-            # 2) Si no, buscar cualquier bloque de letras en el identificador
-            m2 = re.search(r'([A-Za-z]+)', v)
-            if m2:
-                return m2.group(1)
-
-            # 3) Si no encontramos letras, devolvemos vacío
-            return u""
-
-        def normalizar_identificador_a_indice(id_raw):
-            """
-            Toma IDENTIFICADOR completo ('P1B1') y devuelve solo el índice numérico que
-            debe compararse con NumeroConstruccion del Excel.
-            Ej:
-              'P1B1' -> '2'
-              'P1A1' -> '1'
-              'P1AA1' -> '27'
-            Si no puede calcularlo, devuelve el original como string.
-            """
-            letras = extraer_letra_identificador(id_raw)  # 'B'
-            if letras:
-                return letras_a_num(letras)               # '2'
-            # fallback: si no hay letras, intentemos número puro
-            v = _s(id_raw)
-            mnum = re.search(r'(\d+)$', v)
-            if mnum:
-                return unicode(int(mnum.group(1)))
-            return v
+                try: return unicode(str(x)).strip()
+                except: return u""
 
         gdb_path = self.gdb_path.get()
         excel_path = self.excel_path.get()
 
         if not excel_path:
-            tkMessageBox.showerror("Error", u"Debe seleccionar el Excel.")
-            return
+            tkMessageBox.showerror("Error", u"Debe seleccionar el Excel."); return
         if not gdb_path:
-            tkMessageBox.showerror("Error", u"Debe seleccionar la GDB o carpeta contenedora.")
-            return
+            tkMessageBox.showerror("Error", u"Debe seleccionar la GDB o carpeta contenedora."); return
 
-        # Si el usuario apuntó a carpeta en vez de .gdb/.sde, toma la primera .gdb
         if not gdb_path.lower().endswith(".gdb") and not gdb_path.lower().endswith(".sde"):
             gdbs = [f for f in os.listdir(gdb_path) if f.lower().endswith(".gdb")]
             if gdbs:
                 gdb_path = os.path.join(gdb_path, gdbs[0])
             else:
-                tkMessageBox.showerror("Error", u"No se encontró ninguna GDB.")
-                return
+                tkMessageBox.showerror("Error", u"No se encontró ninguna GDB."); return
 
         arcpy.env.workspace = gdb_path
         arcpy.env.overwriteOutput = True
@@ -1783,43 +1713,27 @@ class GDBExcelValidator(Frame):
         try:
             df_uc = extraer_tabla_de_gdb_area_construida(gdb_path, self.tipo_area.get())
         except Exception as e:
-            tkMessageBox.showerror("Error", u"No se pudo leer la tabla de la GDB:\n{}".format(e))
-            return
+            tkMessageBox.showerror("Error", u"No se pudo leer la tabla de la GDB:\n{}".format(e)); return
 
         df_uc.columns = [c.strip() for c in df_uc.columns]
-
-        # usamos CODIGO_UNIDAD_CONSTRUCCION (confirmado)
         req_gdb = ['CODIGO_UNIDAD_CONSTRUCCION', 'IDENTIFICADOR', 'SHAPE_Area']
         faltan_gdb = [c for c in req_gdb if c not in df_uc.columns]
         if faltan_gdb:
-            tkMessageBox.showerror("Error", u"En la tabla GDB faltan: {}".format(", ".join(faltan_gdb)))
-            return
+            tkMessageBox.showerror("Error", u"En la tabla GDB faltan: {}".format(", ".join(faltan_gdb))); return
 
-        # Paso clave:
-        # IDENTIFICADOR -> extraer letra(s) -> convertir letra(s) a número tipo 2,3,4...
-        df_uc['IDX_UNIDAD'] = df_uc['IDENTIFICADOR'].apply(normalizar_identificador_a_indice)
-
-        # CLAVE GDB = CODIGO_UNIDAD_CONSTRUCCION + SEP + IDX_UNIDAD
         df_uc['CLAVE'] = df_uc.apply(
-            lambda r: u"{}{}{}".format(
-                _s(r['CODIGO_UNIDAD_CONSTRUCCION']),
-                SEP,
-                _s(r['IDX_UNIDAD'])
-            ),
+            lambda r: u"{}{}{}".format(_s(r['CODIGO_UNIDAD_CONSTRUCCION']), SEP, _s(r['IDENTIFICADOR'])),
             axis=1
         )
-
         df_uc['Area_GDB'] = pd.to_numeric(df_uc['SHAPE_Area'], errors='coerce')
-
-        # Agrupar áreas de la GDB por esa clave
+        # Agrupar SOLO la GDB
         df_gdb = df_uc.groupby('CLAVE', as_index=False)['Area_GDB'].sum()
 
-        # -------- EXCEL (SIN AGRUPAR) --------
+        # -------- Excel (SIN AGRUPAR) --------
         try:
             xl = pd.ExcelFile(excel_path)
         except Exception as e:
-            tkMessageBox.showerror("Error", u"No se pudo abrir el Excel:\n{}".format(e))
-            return
+            tkMessageBox.showerror("Error", u"No se pudo abrir el Excel:\n{}".format(e)); return
 
         def _find_sheet(xlfile, snippet):
             lst = [h for h in xlfile.sheet_names if snippet in h.strip().lower()]
@@ -1829,8 +1743,7 @@ class GDBExcelValidator(Frame):
         hoja_fichas = _find_sheet(xl, 'fichas')
 
         if not hoja_cons:
-            tkMessageBox.showerror("Error", u"No se encontró la hoja 'Construcciones'.")
-            return
+            tkMessageBox.showerror("Error", u"No se encontró la hoja 'Construcciones'."); return
 
         df_cons = pd.read_excel(excel_path, sheetname=hoja_cons)
         df_cons.columns = [c.strip() for c in df_cons.columns]
@@ -1838,81 +1751,48 @@ class GDBExcelValidator(Frame):
         req_cons_base = ['NumeroConstruccion', 'AreaConstruida']
         faltan_cons_base = [c for c in req_cons_base if c not in df_cons.columns]
         if faltan_cons_base:
-            tkMessageBox.showerror("Error", u"En 'Construcciones' faltan: {}".format(", ".join(faltan_cons_base)))
-            return
+            tkMessageBox.showerror("Error", u"En 'Construcciones' faltan: {}".format(", ".join(faltan_cons_base))); return
 
-        # Recuperar Npn si hace falta
+        # Si no está Npn en Construcciones, intento recuperarlo de Fichas (merge por NroFicha)
         if 'Npn' in df_cons.columns:
             df_src = df_cons.copy()
         else:
             if not hoja_fichas:
-                tkMessageBox.showerror("Error", u"No se encontró 'Npn' en 'Construcciones' y no hay hoja 'Fichas' para recuperarlo.")
-                return
-
+                tkMessageBox.showerror("Error", u"No se encontró 'Npn' en 'Construcciones' y no hay hoja 'Fichas' para recuperarlo."); return
             df_fich = pd.read_excel(excel_path, sheetname=hoja_fichas)
             df_fich.columns = [c.strip() for c in df_fich.columns]
-
             if 'Npn' not in df_fich.columns or 'NroFicha' not in df_fich.columns or 'NroFicha' not in df_cons.columns:
-                tkMessageBox.showerror("Error", u"No se pudo recuperar 'Npn': verifique 'NroFicha' y 'Npn' en 'Fichas'.")
-                return
+                tkMessageBox.showerror("Error", u"No se pudo recuperar 'Npn': verifique 'NroFicha' y 'Npn' en 'Fichas'."); return
+            df_src = pd.merge(df_cons, df_fich[['NroFicha', 'Npn']], on='NroFicha', how='left')
 
-            df_src = pd.merge(
-                df_cons,
-                df_fich[['NroFicha', 'Npn']],
-                on='NroFicha',
-                how='left'
-            )
-
-        # En Excel:
-        # - Npn = mismo código largo
-        # - NumeroConstruccion = 1,2,3,...
+        # Construyo CLAVE pero NO agrupo Excel
         df_src['Npn'] = df_src['Npn'].map(_s)
         df_src['NumeroConstruccion'] = df_src['NumeroConstruccion'].map(_s)
-
-        # CLAVE Excel = Npn + SEP + NumeroConstruccion
-        df_src['CLAVE'] = df_src.apply(
-            lambda r: u"{}{}{}".format(
-                _s(r['Npn']),
-                SEP,
-                _s(r['NumeroConstruccion'])
-            ),
-            axis=1
-        )
-
+        df_src['CLAVE'] = df_src.apply(lambda r: u"{}{}{}".format(_s(r['Npn']), SEP, _s(r['NumeroConstruccion'])), axis=1)
         df_src['Area_Excel'] = pd.to_numeric(df_src['AreaConstruida'], errors='coerce')
 
-        # -------- Comparación (outer join) --------
-        df_out = pd.merge(
-            df_src[['CLAVE', 'Area_Excel']],
-            df_gdb,
-            on='CLAVE',
-            how='outer'
-        )
+        # -------- Comparación (full outer) --------
+        # Nota: como Excel no se agrupa, puede haber varias filas por CLAVE (se verán todas).
+        df_out = pd.merge(df_src[['CLAVE', 'Area_Excel']], df_gdb, on='CLAVE', how='outer')
 
-        # Calcular diferencia de áreas
+        # Cálculo de diferencia por fila
         df_out['Area_GDB']   = pd.to_numeric(df_out.get('Area_GDB'), errors='coerce')
         df_out['Area_Excel'] = pd.to_numeric(df_out.get('Area_Excel'), errors='coerce')
         df_out['Diferencia'] = (df_out['Area_GDB'] - df_out['Area_Excel']).abs()
 
-        # Redondeo a 2 decimales
+        # Redondeo
         for col in ['Area_GDB', 'Area_Excel', 'Diferencia']:
             if col in df_out.columns:
                 df_out[col] = df_out[col].round(2)
 
-        # Si solo_diferentes=True, filtramos para reporte
-        umbral = 1.0  # m²
-
-        # Si solo_diferentes=True, filtramos para reporte
         if solo_diferentes:
-            # Diferencias estrictamente mayores al umbral
-            mask_dif = df_out['Diferencia'].notnull() & (df_out['Diferencia'] > umbral)
-            # Registros sin cruce (faltó en GDB o en Excel)
+            mask_dif     = df_out['Diferencia'].notnull() & (df_out['Diferencia'] != 0)
             mask_nocruce = df_out['Diferencia'].isnull()
             df_out = df_out[mask_dif | mask_nocruce]
 
         df_out['NPN_NRO_CONSTRUCCION'] = df_out['CLAVE']
-
         return df_out[['NPN_NRO_CONSTRUCCION', 'Area_GDB', 'Area_Excel', 'Diferencia']]
+
     def verificar_geometrias_vacias(self,ruta_fc):
         """
         Verifica si hay geometrías vacías (NULL) en una capa.
