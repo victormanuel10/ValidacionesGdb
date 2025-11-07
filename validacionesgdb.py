@@ -185,6 +185,7 @@ class GDBExcelValidator(Frame):
             sheet_comisiones = workbook.add_sheet('Comisiones')
             sheet_omisiones = workbook.add_sheet('Omisiones')
             sheet_diferencias = workbook.add_sheet('Diferencia Areas Construidas')
+            sheet_df_comparar_areas_por_unidad = workbook.add_sheet('Comparar Areas por Unidad')
             sheet_duplicados = workbook.add_sheet('Npn Duplicados')
             sheet_ph_sin_unidad = workbook.add_sheet('PH sin Unidad Predial')
             sheet_terreno_nro_piso = workbook.add_sheet('Terreno con Nro Piso')
@@ -194,7 +195,7 @@ class GDBExcelValidator(Frame):
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
             sheet_etiqueta = workbook.add_sheet('Etiqueta')
-            sheet_df_comparar_areas_por_unidad = workbook.add_sheet('Comparar Areas por Unidad')
+            
             #sheet_validar = workbook.add_sheet('Numero de pisos')
             
             #sheet_reporte=workbook.add_sheet('Reporte')
@@ -1880,11 +1881,11 @@ class GDBExcelValidator(Frame):
         )
 
         df_src['Area_Excel'] = pd.to_numeric(df_src['AreaConstruida'], errors='coerce')
-
+        df_src = df_src.groupby('CLAVE', as_index=False)['Area_Excel'].sum()
         # -------- Comparación (outer join) --------
         df_out = pd.merge(
-            df_src[['CLAVE', 'Area_Excel']],
             df_gdb,
+            df_src[['CLAVE','Area_Excel']],
             on='CLAVE',
             how='outer'
         )
