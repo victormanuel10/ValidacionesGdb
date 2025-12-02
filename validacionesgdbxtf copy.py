@@ -1881,7 +1881,7 @@ class GDBExcelValidator(Frame):
         )
 
         df_src['Area_Excel'] = pd.to_numeric(df_src['AreaConstruida'], errors='coerce')
-        df_src = df_src.groupby('CLAVE', as_index=False)['Area_Excel'].sum()
+        
         # -------- Comparación (outer join) --------
         df_out = pd.merge(
             df_gdb,

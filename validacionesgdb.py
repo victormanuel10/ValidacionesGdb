@@ -1810,7 +1810,7 @@ class GDBExcelValidator(Frame):
             axis=1
         )
 
-        df_uc['Area_GDB'] = pd.to_numeric(df_uc['SHAPE_Area'], errors='coerce')
+        df_uc['Area_GDB'] = pd.to_numeric(df_uc['SHAPE_Area'], errors='coerce').round(2)
 
         # Agrupar áreas de la GDB por esa clave
         df_gdb = df_uc.groupby('CLAVE', as_index=False)['Area_GDB'].sum()
@@ -1880,8 +1880,8 @@ class GDBExcelValidator(Frame):
             axis=1
         )
 
-        df_src['Area_Excel'] = pd.to_numeric(df_src['AreaConstruida'], errors='coerce')
-        df_src = df_src.groupby('CLAVE', as_index=False)['Area_Excel'].sum()
+        df_src['Area_Excel'] = pd.to_numeric(df_src['AreaConstruida'], errors='coerce').round(2)
+        
         # -------- Comparación (outer join) --------
         df_out = pd.merge(
             df_gdb,
@@ -1900,6 +1900,9 @@ class GDBExcelValidator(Frame):
             if col in df_out.columns:
                 df_out[col] = df_out[col].round(2)
 
+        for col in ['Area_GDB', 'Area_Excel', 'Diferencia']:
+            if col in df_out.columns:
+                df_out[col] = df_out[col].fillna('').replace('nan', '')
         # Si solo_diferentes=True, filtramos para reporte
         umbral = 1.0  # m²
 
