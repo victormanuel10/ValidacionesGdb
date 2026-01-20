@@ -191,6 +191,7 @@ class GDBExcelValidator(Frame):
             sheet_terreno_nro_piso = workbook.add_sheet('Terreno con Nro Piso')
             sheet_duplicados_terreno = workbook.add_sheet('Terreno Duplicados')
             sheet_informalidades_sin_predio_formal = workbook.add_sheet('Informalidades Sin P')
+            sheet_df_informalidad_condicion2_vs_formal_area = workbook.add_sheet('Area informal superior a Fomral')
             sheet_npn__unidad_diferente_de_terreno = workbook.add_sheet('Npn Unidad Dif De Terreno')
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
@@ -273,11 +274,11 @@ class GDBExcelValidator(Frame):
             
             
             #print(df_npns_duplicados)
-            df_informalidades_sin_predio_formal=self.copiar_filtrar_buffer_y_join(gdb_path)
+            df_informalidades_sin_predio_formal=self.informalidad_sin_predio_formal(gdb_path)
             df_npn__unidad_diferente_de_terreno=self.validar_npn__unidad_diferente_de_terreno(gdb_path)
             df_npn__construccion_diferente_de_terreno=self.validar_npn__construccion_diferente_de_terreno(gdb_path)
             df_etiqueta=self.validar_etiqueta(gdb_path)
-            
+            df_informalidad_condicion2_vs_formal_area=self.informalidades_suman_mas_que_formal(gdb_path)
             df_comparar_areas_por_unidad=self.comparar_areas_por_unidad()
             
             
@@ -290,6 +291,7 @@ class GDBExcelValidator(Frame):
                 u"PH sin Unidad Predial": df_ph_sin_unidad,
                 u"Terrenos con Numero de Piso": df_terreno_con_nro_piso,
                 u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
+                u"Area informal superior a Fomral": df_informalidad_condicion2_vs_formal_area,
                 u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
                 u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
                 u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
@@ -356,7 +358,13 @@ class GDBExcelValidator(Frame):
                     sheet_informalidades_sin_predio_formal.write(row_num, col_num, str(value).decode('utf-8'))
 
             
-            
+            for col_num, column in enumerate(df_informalidad_condicion2_vs_formal_area.columns):
+                sheet_df_informalidad_condicion2_vs_formal_area.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
+            for row_num, row in enumerate(df_informalidad_condicion2_vs_formal_area.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_df_informalidad_condicion2_vs_formal_area.write(row_num, col_num, str(value).decode('utf-8'))
             
             
             for col_num, column in enumerate(df_npn__unidad_diferente_de_terreno.columns):
@@ -451,11 +459,7 @@ class GDBExcelValidator(Frame):
             tkMessageBox.showerror("Error", "Fallo la validación de topología:\n{}".format(str(e)))
     
     def validar_topologia(self, gdb_path, output_excel):
-        import arcpy
-        import pandas as pd
-        import os
-        import xlwt
-
+        
         arcpy.env.workspace = gdb_path
         arcpy.env.overwriteOutput = True
 
@@ -541,10 +545,7 @@ class GDBExcelValidator(Frame):
     
 
     def calcular_areas_construidas(self):
-        import sys, os
-        import pandas as pd
-        import arcpy
-        reload(sys)
+        
         sys.setdefaultencoding('utf-8')  # Evitar errores de codificación en Python 2.7
 
         gdb_path = self.gdb_path.get()
@@ -846,7 +847,7 @@ class GDBExcelValidator(Frame):
         return df 
 
 
-    def copiar_filtrar_buffer_y_join(self, gdb_path):
+    def informalidad_sin_predio_formal(self, gdb_path):
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
         feature_class_path = os.path.join(gdb_path, feature_class_name)
 
@@ -855,7 +856,7 @@ class GDBExcelValidator(Frame):
         if not arcpy.Exists(feature_class_path):
             tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name))
             return None  
-        print("copiar_filtrar_buffer_y_join")
+        print("informalidad_sin_predio_formal")
         # Definir rutas de salida
         formal_filtrado_fc = os.path.join(gdb_path, "formal_filtrado")
         informal_filtrado_fc = os.path.join(gdb_path, "informal_filtrado")
@@ -919,7 +920,173 @@ class GDBExcelValidator(Frame):
             print("Error:", e)
             return None
         
+   
+    
+    
+    def informalidades_suman_mas_que_formal(self, gdb_path):
+        """
+        - Informalidad: dígito 22 de TERRENO_CODIGO = '2'
+        - Formal:       dígito 22 <> '2'
 
+        Proceso:
+        1) Calcula área total de cada informalidad
+        2) Calcula área REAL de intersección (Intersect) con formales
+        3) Resta: DIF = AREA_INFORMALIDAD - AREA_INTERSECCION
+        4) Retorna SOLO diferencias > 0.01
+        """
+
+        import os
+        import pandas as pd
+        import arcpy
+        import tkMessageBox
+
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        fc = os.path.join(gdb_path, feature_class_name)
+
+        arcpy.env.workspace = gdb_path
+        arcpy.env.overwriteOutput = True
+
+        if not arcpy.Exists(fc):
+            tkMessageBox.showerror("Error", "La capa {} no existe en la GDB.".format(feature_class_name))
+            return None
+
+        print("validar_informalidad_intersect_diferencia")
+
+        # -------------------------
+        # Helpers
+        # -------------------------
+        def _fmt_num(a):
+            try:
+                s = "{:,.2f}".format(float(a))
+                s = s.replace(",", "X").replace(".", ",").replace("X", ".")
+                return s
+            except:
+                return u"0,00"
+
+        def _clean(v):
+            if v is None:
+                return None
+            try:
+                return unicode(v).strip()
+            except:
+                return str(v).strip()
+
+        def _count(fc):
+            try:
+                return int(arcpy.GetCount_management(fc).getOutput(0))
+            except:
+                return 0
+
+        # -------------------------
+        # Capas temporales
+        # -------------------------
+        inf_fc   = os.path.join(gdb_path, "tmp_inf_d22_2")
+        for_fc   = os.path.join(gdb_path, "tmp_for_d22_no2")
+        inter_fc = os.path.join(gdb_path, "tmp_inf_for_intersect")
+        dis_fc   = os.path.join(gdb_path, "tmp_inf_for_intersect_dis")
+
+        try:
+            # 1) Informalidades
+            arcpy.MakeFeatureLayer_management(
+                fc, "lyr_inf",
+                "SUBSTRING(TERRENO_CODIGO,22,1) = '2'"
+            )
+            arcpy.CopyFeatures_management("lyr_inf", inf_fc)
+
+            # 2) Formales
+            arcpy.MakeFeatureLayer_management(
+                fc, "lyr_for",
+                "SUBSTRING(TERRENO_CODIGO,22,1) <> '2'"
+            )
+            arcpy.CopyFeatures_management("lyr_for", for_fc)
+
+            if _count(inf_fc) == 0:
+                return pd.DataFrame(columns=[
+                    "TERRENO_CODIGO",
+                    "AREA_INFORMALIDAD",
+                    "AREA_INTERSECCION",
+                    "DIFERENCIA"
+                ])
+
+            # 3) Área total de informalidad
+            area_inf = {}
+            with arcpy.da.SearchCursor(inf_fc, ["TERRENO_CODIGO", "SHAPE@AREA"]) as cur:
+                for tc, a in cur:
+                    tc = _clean(tc)
+                    if tc:
+                        area_inf[tc] = float(a)
+
+            # 4) Intersect real
+            arcpy.Intersect_analysis([inf_fc, for_fc], inter_fc, "ALL", "", "INPUT")
+
+            # Si no hay intersección
+            if _count(inter_fc) == 0:
+                data = []
+                for tc, a_inf in area_inf.items():
+                    if a_inf > 0.01:
+                        data.append([
+                            tc,
+                            _fmt_num(a_inf),
+                            "0,00",
+                            _fmt_num(a_inf)
+                        ])
+                return pd.DataFrame(data, columns=[
+                    "TERRENO_CODIGO",
+                    "AREA_INFORMALIDAD",
+                    "AREA_INTERSECCION",
+                    "DIFERENCIA"
+                ])
+
+            # 5) Detectar campo del informal en intersect
+            fields = [f.name for f in arcpy.ListFields(inter_fc)]
+            campo_inf = "TERRENO_CODIGO" if "TERRENO_CODIGO" in fields else None
+            if not campo_inf:
+                for f in fields:
+                    if f.upper().startswith("TERRENO_CODIGO"):
+                        campo_inf = f
+                        break
+
+            # 6) Dissolve por informalidad
+            arcpy.Dissolve_management(inter_fc, dis_fc, dissolve_field=[campo_inf])
+
+            # 7) Área de intersección por informalidad
+            area_int = {}
+            with arcpy.da.SearchCursor(dis_fc, [campo_inf, "SHAPE@AREA"]) as cur:
+                for tc, a in cur:
+                    tc = _clean(tc)
+                    if tc:
+                        area_int[tc] = float(a)
+
+            # 8) Construir resultado final
+            data = []
+            for tc, a_inf in area_inf.items():
+                a_int = area_int.get(tc, 0.0)
+                dif = a_inf - a_int
+
+                if dif <= 0.01:
+                    continue
+
+                data.append([
+                    tc,
+                    _fmt_num(a_inf),
+                    _fmt_num(a_int),
+                    _fmt_num(dif)
+                ])
+
+            df = pd.DataFrame(data, columns=[
+                "TERRENO_CODIGO",
+                "AREA_INFORMALIDAD",
+                "AREA_INTERSECCION",
+                "DIFERENCIA"
+            ])
+
+            return df
+
+        except Exception as e:
+            tkMessageBox.showerror("Error", "No se pudo procesar: {}".format(str(e)))
+            print("Error:", e)
+            return None
+    
     def validar_npn__unidad_diferente_de_terreno(self, gdb_path):
         feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
         feature_class_path = os.path.join(gdb_path, feature_class_name)
@@ -1673,11 +1840,6 @@ class GDBExcelValidator(Frame):
     
     
     def comparar_areas_por_unidad(self, separador='', solo_diferentes=True):
-        # -*- coding: utf-8 -*-
-        import os, sys, pandas as pd, arcpy
-        import Tkinter as tk
-        import tkMessageBox as tkMessageBox
-        import re
 
         try:
             reload(sys); sys.setdefaultencoding('utf-8')

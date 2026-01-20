@@ -3,7 +3,6 @@ import arcpy
 import Tkinter as tk
 import tkFileDialog
 import tkMessageBox
-from tkinter import ttk
 import os
 import pandas as pd
 
@@ -296,7 +295,7 @@ class GDBApp:
                                     terreno_codigo]  # Asignar MatriculaInmobiliaria cuando coincida
                                 cursor.updateRow(row)
                                 print(
-                                            "Asignado ModoAdquisicion a terreno_codigo " + terreno_codigo + " en " + fc_name)
+                                            "Asignado PredioLcTipo a terreno_codigo " + terreno_codigo + " en " + fc_name)
 
             #tkMessageBox.showinfo("Éxito", "Datos del archivo Excel importados y actualizados correctamente.")
 
@@ -524,7 +523,9 @@ class GDBApp:
         except Exception as e:
             tkMessageBox.showerror("Error", "Error al importar o procesar el archivo Excel (unidades):"+ str(e))
 
-    def agregar_propietario_terrno(self):
+
+
+    def agregar_propietario_terreno(self):
         """Importar el segundo archivo Excel y realizar la comparación con las feature classes r_lc_unidad y u_lc_unidad."""
         try:
             # Verificar si la geodatabase ha sido seleccionada antes de importar Excel
@@ -614,6 +615,8 @@ class GDBApp:
                 ('BANIO', 'Text',256),
                 ('ANEXO_1', 'Text',256),
                 ('ANEXO_2','Text',256),
+                ('ANEXO_3', 'Text', 256),
+                ('ANEXO_4', 'Text', 256),
                 ('OBSERVACIONES','Text',256),
             ]
 
@@ -663,7 +666,7 @@ class GDBApp:
                     arcpy.CalculateField_management(
                         in_table=fc_path,
                         field="NpnTerreno",
-                        expression="!codigo_construccion![:20]",
+                        expression="!codigo_construccion![:22]",
                         expression_type="PYTHON"
                     )
 
@@ -678,7 +681,7 @@ class GDBApp:
                     arcpy.CalculateField_management(
                         in_table=fc_path,
                         field="NpnTerreno",
-                        expression="!codigo_unidad_construccion![:20]",
+                        expression="!codigo_unidad_construccion![:22]",
                         expression_type="PYTHON"
                     )
 
@@ -748,7 +751,7 @@ class GDBApp:
                     Sheet=sheet
                 )
 
-            tkMessageBox.showinfo("Éxito", "Todas las hojas se han importado correctamente a la geodatabase.")
+            #tkMessageBox.showinfo("Éxito", "Todas las hojas se han importado correctamente a la geodatabase.")
 
         except arcpy.ExecuteError as e:
             # Capturar errores de ArcPy
@@ -781,7 +784,7 @@ class GDBApp:
                 "Edificios",
                 "FichasPrediales",
                 "ConstruccionesFicha",
-                #"CalificacionesConstrucciones",
+                "CalificacionesConstrucciones",
                 "ConstruccionGeneralFicha",
                 "Propietarios",
             ]
@@ -807,6 +810,7 @@ class GDBApp:
             tkMessageBox.showerror("Error", "Error al importar el archivo Excel: {str(e)}")
 
 
+
     def process_all(self):
         """Función que ejecuta la selección de GDB, agrega campos e importa Excel en orden."""
 
@@ -819,16 +823,15 @@ class GDBApp:
             self.agregar_ficha_terreno()
             self.agregar_matricula_terreno()
             self.agregar_prediolc_terreno()
-            self.agregar_adquisicion_terreno()
-            self.agregar_propietario_terrno()
-            #self.agregar_ficha_unidad()
-            #self.agregar_matricula_unidad()
-            #self.agregar_prediolc_unidad()
-            #self.agregar_adquisicion_unidad()
-            #self.import_to_gdb()
-            
-            
-            #self.comparar_y_exportar()
+            self.agregar_propietario_terreno()
+            self.agregar_adquisicion_terreno ()
+            self.agregar_ficha_unidad()
+            self.agregar_matricula_unidad()
+            #self.agregar_prediolc_unidad() no va
+            #self.agregar_adquisicion_unidad() no va
+
+            self.import_to_gdb()
+            #self.comparar_y_exportar() no va
 
 # Iniciar la aplicación
 
