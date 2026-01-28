@@ -213,11 +213,13 @@ class GDBExcelValidator(Frame):
             sheet_comisiones = workbook.add_sheet('Comisiones')
             sheet_omisiones = workbook.add_sheet('Omisiones')
             sheet_diferencias = workbook.add_sheet('Diferencia Areas Construidas')
+            sheet_df_comparar_areas_por_unidad = workbook.add_sheet('Comparar Areas por Unidad')
             sheet_duplicados = workbook.add_sheet('Npn Duplicados')
             sheet_ph_sin_unidad = workbook.add_sheet('PH sin Unidad Predial')
             sheet_terreno_nro_piso = workbook.add_sheet('Terreno con Nro Piso')
             sheet_duplicados_terreno = workbook.add_sheet('Terreno Duplicados')
             sheet_informalidades_sin_predio_formal = workbook.add_sheet('Informalidades Sin P')
+            sheet_df_informalidad_condicion2_vs_formal_area = workbook.add_sheet('Area informal superior a Fomral')
             sheet_npn__unidad_diferente_de_terreno = workbook.add_sheet('Npn Unidad Dif De Terreno')
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
@@ -278,6 +280,8 @@ class GDBExcelValidator(Frame):
             df_npn__unidad_diferente_de_terreno = self.validar_npn__unidad_diferente_de_terreno(gdb_path)
             df_npn__construccion_diferente_de_terreno = self.validar_npn__construccion_diferente_de_terreno(gdb_path)
             df_etiqueta = self.validar_etiqueta(gdb_path)
+            df_comparar_areas_por_unidad=self.comparar_areas_por_unidad()
+            df_informalidad_condicion2_vs_formal_area=self.informalidades_suman_mas_que_formal(gdb_path)
 
             reportes_dict = {
                 u"Comisiones": diff_terreno_codigo,
@@ -292,6 +296,8 @@ class GDBExcelValidator(Frame):
                 u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
                 u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
                 u"Etiqueta": df_etiqueta,
+                u"Comparar Areas por Unidad": df_comparar_areas_por_unidad,
+                u"Area informal superior a Fomral": df_informalidad_condicion2_vs_formal_area,
             }
 
             # reporte resumen
@@ -372,6 +378,24 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_etiqueta.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_etiqueta.write(row_num, col_num, str(value).decode('utf-8'))
+
+            for col_num, column in enumerate(df_comparar_areas_por_unidad.columns):
+                sheet_df_comparar_areas_por_unidad.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
+            for row_num, row in enumerate(df_comparar_areas_por_unidad.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_df_comparar_areas_por_unidad.write(row_num, col_num, str(value).decode('utf-8'))
+
+            for col_num, column in enumerate(df_informalidad_condicion2_vs_formal_area.columns):
+                sheet_df_informalidad_condicion2_vs_formal_area.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
+            for row_num, row in enumerate(df_informalidad_condicion2_vs_formal_area.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_df_informalidad_condicion2_vs_formal_area.write(row_num, col_num, str(value).decode('utf-8'))
+
+
 
             workbook.save(output_path)
 
@@ -1337,7 +1361,7 @@ class GDBExcelValidator(Frame):
             tkMessageBox.showerror("Error", "No se pudo procesar: {}".format(str(e)))
             print("Error:", e)
             return None
-
+    
     def validacion_informalidad_sobre_predio(self, gdb_path):
         feature_class_name_terreno = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
         fc_terr = os.path.join(gdb_path, feature_class_name_terreno)
@@ -1414,31 +1438,17 @@ class GDBExcelValidator(Frame):
                 nro_ficha_inf = pick(row, ["nroficha_1", "nroficha_informal", "nroficha1"])
                 terreno = pick(row, ["terreno_codigo", "terreno_codigo_0", "terreno_codigo_formal"])
                 terreno1 = pick(row, ["terreno_codigo_1", "terreno_codigo_informal"])
-                modo = pick(row, ["modoreadquisicion", "moadadquisicion", "moadadquisicion_0", "moadadquisicion"])
-                modo1 = pick(row, ["moadadquisicion_1", "moadadquisicion1", "moadadquisicion_informal","moadadquisicion_inform"])
+                modo = pick(row, ["modoreadquisicion", "moadadquisicion", "moadadquisicion_0", "moadadquisicion","modoadquisicion"])
+                modo1 = pick(row, ["moadadquisicion_1", "moadadquisicion1", "moadadquisicion_informal","moadadquisicion_inform","modoadquisicion_1"])
                 tipo = pick(row, ["prediolctipo", "prediolctipo_0"])
                 tipo1 = pick(row, ["prediolctipo_1","prediolctipo1"])
                 matricula = pick(row, ["matriculainmobiliaria","matriculainmobiliaria_0"])
                 razon = pick(row, ["razonsocial","razonsocial_1","razonsocial_0"])
 
                 # regla negocio
-                if matricula:
+                if matricula :
                     # caso con matrícula
-                    if modo != "1|DOMINIO (TRADICION)":
-                        errores.append({
-                            "Observacion": u"Modo de adquisicion incorrecto para predio formal",
-                            "NroFicha_Formal": nro_ficha_formal,
-                            "NroFicha_Informal": nro_ficha_inf,
-                            "TERRENO_CODIGO_FORMAL": terreno,
-                            "TERRENO_CODIGO_INFORMAL": terreno1,
-                            "MatriculaInmobiliaria": matricula,
-                            "PredioLcTipo_FORMAL": tipo,
-                            "PredioLcTipo_INFORMALIDAD": tipo1,
-                            "ModoAdquisicion_FORMAL": modo,
-                            "ModoAdquisicion_INFORMALIDAD": modo1,
-                            "RazonSocial": razon
-                        })
-                    if modo1 != "2|POSESIN":
+                    if tipo=='Predio.Publico.Uso_Publico' and modo1 != "5|OCUPACIN":
                         errores.append({
                             "Observacion": u"ModoAdquisicion incorrecto para predio informal sobre predio con matricula",
                             "NroFicha_Formal": nro_ficha_formal,
@@ -1452,11 +1462,9 @@ class GDBExcelValidator(Frame):
                             "ModoAdquisicion_INFORMALIDAD": modo1,
                             "RazonSocial": razon
                         })
-                else:
-                    # sin matrícula
-                    if modo != "1|DOMINIO (TRADICION)":
+                    if tipo=='Predio.Publico.Uso_Publico' and tipo1 != "Predio.Privado.Privado":
                         errores.append({
-                            "Observacion": u"Modo de adquisicion incorrecto para predio formal",
+                            "Observacion": u"PredioLcTipo incorrecto para predio informal sobre predio con matricula",
                             "NroFicha_Formal": nro_ficha_formal,
                             "NroFicha_Informal": nro_ficha_inf,
                             "TERRENO_CODIGO_FORMAL": terreno,
@@ -1468,9 +1476,25 @@ class GDBExcelValidator(Frame):
                             "ModoAdquisicion_INFORMALIDAD": modo1,
                             "RazonSocial": razon
                         })
-                    if modo1 != "5|OCUPACIN":
+                else:
+                    # sin matrícula
+                    if tipo=='Predio.Publico.Uso_Publico' and modo1 != "5|OCUPACIN":
                         errores.append({
-                            "Observacion": u"ModoAdquisicion incorrecto en predio informal sobre predio sin matricula",
+                            "Observacion": u"Modo de adquisicion incorrecto para predio formal sin matricula",
+                            "NroFicha_Formal": nro_ficha_formal,
+                            "NroFicha_Informal": nro_ficha_inf,
+                            "TERRENO_CODIGO_FORMAL": terreno,
+                            "TERRENO_CODIGO_INFORMAL": terreno1,
+                            "MatriculaInmobiliaria": matricula,
+                            "PredioLcTipo_FORMAL": tipo,
+                            "PredioLcTipo_INFORMALIDAD": tipo1,
+                            "ModoAdquisicion_FORMAL": modo,
+                            "ModoAdquisicion_INFORMALIDAD": modo1,
+                            "RazonSocial": razon
+                        })
+                    if tipo=='Predio.Publico.Uso_Publico' and tipo1!='Predio.Publico.Presunto_Baldio':
+                        errores.append({
+                            "Observacion": u"PredioLcTipo incorrecto en predio informal sobre predio sin matricula",
                             "NroFicha_Formal": nro_ficha_formal,
                             "NroFicha_Informal": nro_ficha_inf,
                             "TERRENO_CODIGO_FORMAL": terreno,
@@ -2018,7 +2042,170 @@ class GDBExcelValidator(Frame):
 
         df_out['npn_nro_construccion'] = df_out['clave']
         return df_out[['npn_nro_construccion', 'area_gdb', 'area_excel', 'diferencia']]
+    
+    def informalidades_suman_mas_que_formal(self, gdb_path):
+        """
+        - Informalidad: dígito 22 de TERRENO_CODIGO = '2'
+        - Formal:       dígito 22 <> '2'
 
+        Retorna solo diferencias > 0.01
+        """
+
+        feature_class_name = "r_lc_terreno" if self.tipo_area.get() == "Rural" else "u_lc_terreno"
+        fc = os.path.join(gdb_path, feature_class_name)
+
+        arcpy.env.workspace = gdb_path
+        arcpy.env.overwriteOutput = True
+
+        if not arcpy.Exists(fc):
+            tkMessageBox.showerror("Error", u"La capa {} no existe en la GDB.".format(feature_class_name))
+            return None
+
+        print("informalidades_suman_mas_que_formal")
+
+        # ------------------------------------------------
+        # Helpers
+        # ------------------------------------------------
+        def _fmt_num(a):
+            try:
+                s = "{:,.2f}".format(float(a))
+                return s.replace(",", "X").replace(".", ",").replace("X", ".")
+            except:
+                return u"0,00"
+
+        def _clean(v):
+            if v is None:
+                return None
+            try:
+                return unicode(v).strip()
+            except:
+                return str(v).strip()
+
+        def _count(fc):
+            try:
+                return int(arcpy.GetCount_management(fc).getOutput(0))
+            except:
+                return 0
+
+        def _find_field(fc, name):
+            """Encuentra un campo sin importar mayúsculas/minúsculas"""
+            for f in arcpy.ListFields(fc):
+                if f.name.lower() == name.lower():
+                    return f.name
+            return None
+
+        # ------------------------------------------------
+        # Detectar campo TERRENO_CODIGO dinámicamente
+        # ------------------------------------------------
+        campo_tc = _find_field(fc, "terreno_codigo")
+        if not campo_tc:
+            tkMessageBox.showerror("Error", u"No se encontró el campo TERRENO_CODIGO.")
+            return None
+
+        # ------------------------------------------------
+        # Capas temporales
+        # ------------------------------------------------
+        inf_fc   = os.path.join(gdb_path, "tmp_inf_d22_2")
+        for_fc   = os.path.join(gdb_path, "tmp_for_d22_no2")
+        inter_fc = os.path.join(gdb_path, "tmp_inf_for_intersect")
+        dis_fc   = os.path.join(gdb_path, "tmp_inf_for_intersect_dis")
+
+        try:
+            # 1) Informalidades
+            arcpy.MakeFeatureLayer_management(
+                fc, "lyr_inf",
+                "SUBSTRING({0},22,1) = '2'".format(arcpy.AddFieldDelimiters(fc, campo_tc))
+            )
+            arcpy.CopyFeatures_management("lyr_inf", inf_fc)
+
+            # 2) Formales
+            arcpy.MakeFeatureLayer_management(
+                fc, "lyr_for",
+                "SUBSTRING({0},22,1) <> '2'".format(arcpy.AddFieldDelimiters(fc, campo_tc))
+            )
+            arcpy.CopyFeatures_management("lyr_for", for_fc)
+
+            if _count(inf_fc) == 0:
+                return pd.DataFrame(columns=[
+                    "terreno_codigo",
+                    "area_informalidad",
+                    "area_interseccion",
+                    "diferencia"
+                ])
+
+            # 3) Área total por informalidad
+            area_inf = {}
+            with arcpy.da.SearchCursor(inf_fc, [campo_tc, "SHAPE@AREA"]) as cur:
+                for tc, a in cur:
+                    tc = _clean(tc)
+                    if tc:
+                        area_inf[tc] = area_inf.get(tc, 0.0) + float(a)
+
+            # 4) Intersect real
+            arcpy.Intersect_analysis([inf_fc, for_fc], inter_fc, "ALL", "", "INPUT")
+
+            # Si no hay intersección
+            if _count(inter_fc) == 0:
+                data = []
+                for tc, a_inf in area_inf.items():
+                    if a_inf > 0.01:
+                        data.append([
+                            tc,
+                            _fmt_num(a_inf),
+                            "0,00",
+                            _fmt_num(a_inf)
+                        ])
+                return pd.DataFrame(data, columns=[
+                    "terreno_codigo",
+                    "area_informalidad",
+                    "area_interseccion",
+                    "diferencia"
+                ])
+
+            # 5) Detectar campo del informal en intersect
+            campo_inf = _find_field(inter_fc, campo_tc)
+            if not campo_inf:
+                tkMessageBox.showerror("Error", u"No se pudo identificar el campo TERRENO_CODIGO en intersect.")
+                return None
+
+            # 6) Dissolve por informalidad
+            arcpy.Dissolve_management(inter_fc, dis_fc, dissolve_field=[campo_inf])
+
+            # 7) Área de intersección
+            area_int = {}
+            with arcpy.da.SearchCursor(dis_fc, [campo_inf, "SHAPE@AREA"]) as cur:
+                for tc, a in cur:
+                    tc = _clean(tc)
+                    if tc:
+                        area_int[tc] = float(a)
+
+            # 8) Resultado final
+            data = []
+            for tc, a_inf in area_inf.items():
+                a_int = area_int.get(tc, 0.0)
+                dif = a_inf - a_int
+
+                if dif <= 0.01:
+                    continue
+
+                data.append([
+                    tc,
+                    _fmt_num(a_inf),
+                    _fmt_num(a_int),
+                    _fmt_num(dif)
+                ])
+
+            return pd.DataFrame(data, columns=[
+                "terreno_codigo",
+                "area_informalidad",
+                "area_interseccion",
+                "diferencia"
+            ])
+
+        except Exception as e:
+            tkMessageBox.showerror("Error", u"No se pudo procesar:\n{}".format(str(e)))
+            print("Error:", e)
+            return None
     def verificar_geometrias_vacias(self, ruta_fc):
         """
         Verifica si hay geometrías vacías (NULL) en una capa.

@@ -1023,7 +1023,7 @@ class GDBExcelValidator(Frame):
             if _count(inter_fc) == 0:
                 data = []
                 for tc, a_inf in area_inf.items():
-                    if a_inf > 0.01:
+                    if a_inf > 0.09:
                         data.append([
                             tc,
                             _fmt_num(a_inf),
@@ -1063,7 +1063,7 @@ class GDBExcelValidator(Frame):
                 a_int = area_int.get(tc, 0.0)
                 dif = a_inf - a_int
 
-                if dif <= 0.01:
+                if dif <= 0.09:
                     continue
 
                 data.append([
