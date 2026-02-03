@@ -186,6 +186,7 @@ class GDBExcelValidator(Frame):
             sheet_omisiones = workbook.add_sheet('Omisiones')
             sheet_diferencias = workbook.add_sheet('Diferencia Areas Construidas')
             sheet_df_comparar_areas_por_unidad = workbook.add_sheet('Comparar Areas por Unidad')
+            #sheet_df_validar_anio_construccion = workbook.add_sheet('Validar Anio Construccion')
             sheet_duplicados = workbook.add_sheet('Npn Duplicados')
             sheet_ph_sin_unidad = workbook.add_sheet('PH sin Unidad Predial')
             sheet_terreno_nro_piso = workbook.add_sheet('Terreno con Nro Piso')
@@ -280,7 +281,7 @@ class GDBExcelValidator(Frame):
             df_etiqueta=self.validar_etiqueta(gdb_path)
             df_informalidad_condicion2_vs_formal_area=self.informalidades_suman_mas_que_formal(gdb_path)
             df_comparar_areas_por_unidad=self.comparar_areas_por_unidad()
-            
+            #df_validar_anio_construccion=self.validar_anio_construccion()
             
             reportes_dict = {
                 u"Comisiones":diff_terreno_codigo,
@@ -297,6 +298,7 @@ class GDBExcelValidator(Frame):
                 u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
                 u"Etiqueta":df_etiqueta,
                 u"Comparar Areas por Unidad": df_comparar_areas_por_unidad,
+                #u"Validar Anio Construccion":df_validar_anio_construccion,
                 #u"Numero de pisos":df_filtrado_pisos
             }
             
@@ -433,8 +435,16 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_comparar_areas_por_unidad.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_df_comparar_areas_por_unidad.write(row_num, col_num, str(value).decode('utf-8'))
+            """
             
-            
+            for col_num, column in enumerate(df_validar_anio_construccion.columns):
+                sheet_df_validar_anio_construccion.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
+            for row_num, row in enumerate(df_validar_anio_construccion.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_df_validar_anio_construccion.write(row_num, col_num, str(value).decode('utf-8'))
+            """
             workbook.save(output_path)
             
             tkMessageBox.showinfo("Éxito".decode('utf-8'), u"Proceso finalizado correctamente.\nArchivos guardados en:\n" +
@@ -932,7 +942,7 @@ class GDBExcelValidator(Frame):
         1) Calcula área total de cada informalidad
         2) Calcula área REAL de intersección (Intersect) con formales
         3) Resta: DIF = AREA_INFORMALIDAD - AREA_INTERSECCION
-        4) Retorna SOLO diferencias > 0.01
+        4) Retorna SOLO diferencias > 0.9
         """
 
         import os
@@ -1023,7 +1033,7 @@ class GDBExcelValidator(Frame):
             if _count(inter_fc) == 0:
                 data = []
                 for tc, a_inf in area_inf.items():
-                    if a_inf > 0.09:
+                    if a_inf > 0.9:
                         data.append([
                             tc,
                             _fmt_num(a_inf),
@@ -1063,7 +1073,7 @@ class GDBExcelValidator(Frame):
                 a_int = area_int.get(tc, 0.0)
                 dif = a_inf - a_int
 
-                if dif <= 0.09:
+                if dif <= 0.9:
                     continue
 
                 data.append([
@@ -1856,7 +1866,7 @@ class GDBExcelValidator(Frame):
                     return unicode(str(x)).strip()
                 except:
                     return u""
-
+        print("comparar_areas_por_unidad")
         def letras_a_num(col_letras):
             """
             Convierte 'A'->'1', 'B'->'2', ..., 'Z'->'26', 'AA'->'27', etc.
@@ -2079,6 +2089,8 @@ class GDBExcelValidator(Frame):
         df_out['NPN_NRO_CONSTRUCCION'] = df_out['CLAVE']
 
         return df_out[['NPN_NRO_CONSTRUCCION', 'Area_GDB', 'Area_Excel', 'Diferencia']]
+    
+    
     def verificar_geometrias_vacias(self,ruta_fc):
         """
         Verifica si hay geometrías vacías (NULL) en una capa.
