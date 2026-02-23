@@ -39,6 +39,7 @@ def dividir_npn_en_columnas(npn):
     ]
 
 
+
 def extraer_tabla_de_gdb_area_construida(gdb_path, tipo_area):
         """
         Extrae la tabla de la GDB y la convierte a un DataFrame.
@@ -197,7 +198,7 @@ class GDBExcelValidator(Frame):
             sheet_npn__construccion_diferente_de_terreno = workbook.add_sheet('Npn Construccion Dif De Terreno')
             sheet_npn_validacion_informalidad_sobre_predio = workbook.add_sheet('informalidad_sobre_predio')
             sheet_etiqueta = workbook.add_sheet('Etiqueta')
-            
+            sheet_df_validar_altura_y_anio_unidad = workbook.add_sheet('Altura y Anio Unidad')
             #sheet_validar = workbook.add_sheet('Numero de pisos')
             
             #sheet_reporte=workbook.add_sheet('Reporte')
@@ -281,25 +282,25 @@ class GDBExcelValidator(Frame):
             df_etiqueta=self.validar_etiqueta(gdb_path)
             df_informalidad_condicion2_vs_formal_area=self.informalidades_suman_mas_que_formal(gdb_path)
             df_comparar_areas_por_unidad=self.comparar_areas_por_unidad()
+            df_validar_altura_y_anio_unidad=self.validar_altura_y_anio_unidad(gdb_path)
             #df_validar_anio_construccion=self.validar_anio_construccion()
-            
+    
             reportes_dict = {
-                u"Comisiones":diff_terreno_codigo,
-                u"Omisiones":omisiones_filtradas,
-                u"Diferencias de area > 2.5": df_diferencias_areas_construidas,
-                u"NPNs Duplicados": df_npns_duplicados,
-                u"Terreno Duplicados": df_validar_terreno_codigo_duplicado_ficha,
-                u"PH sin Unidad Predial": df_ph_sin_unidad,
-                u"Terrenos con Numero de Piso": df_terreno_con_nro_piso,
-                u"Informalidades Sin Predio Formal": df_informalidades_sin_predio_formal,
-                u"Area informal superior a Fomral": df_informalidad_condicion2_vs_formal_area,
-                u"NPN Unidad Diferente de Terreno": df_npn__unidad_diferente_de_terreno,
-                u"NPN Construcción Diferente de Terreno": df_npn__construccion_diferente_de_terreno,
-                u"Informalidades Sobre Predio": df_informalidad_sobre_predio,
-                u"Etiqueta":df_etiqueta,
-                u"Comparar Areas por Unidad": df_comparar_areas_por_unidad,
-                #u"Validar Anio Construccion":df_validar_anio_construccion,
-                #u"Numero de pisos":df_filtrado_pisos
+                u"Comisiones": self.agregar_condicion_predio(pd.DataFrame(list(diff_terreno_codigo), columns=["TERRENO_CODIGO"])),
+                u"Omisiones": self.agregar_condicion_predio(pd.DataFrame(list(omisiones_filtradas), columns=["Npn"])),
+                u"Diferencias de area > 2.5": self.agregar_condicion_predio(df_diferencias_areas_construidas),
+                u"NPNs Duplicados": self.agregar_condicion_predio(df_npns_duplicados),
+                u"Terreno Duplicados": self.agregar_condicion_predio(df_validar_terreno_codigo_duplicado_ficha),
+                u"PH sin Unidad Predial": self.agregar_condicion_predio(df_ph_sin_unidad),
+                u"Terrenos con Numero de Piso": self.agregar_condicion_predio(df_terreno_con_nro_piso),
+                u"Informalidades Sin Predio Formal": self.agregar_condicion_predio(df_informalidades_sin_predio_formal),
+                u"Area informal superior a Fomral": self.agregar_condicion_predio(df_informalidad_condicion2_vs_formal_area),
+                u"NPN Unidad Diferente de Terreno": self.agregar_condicion_predio(df_npn__unidad_diferente_de_terreno),
+                u"NPN Construcción Diferente de Terreno": self.agregar_condicion_predio(df_npn__construccion_diferente_de_terreno),
+                u"Informalidades Sobre Predio": self.agregar_condicion_predio(df_informalidad_sobre_predio),
+                u"Etiqueta": self.agregar_condicion_predio(df_etiqueta),
+                u"Comparar Areas por Unidad": self.agregar_condicion_predio(df_comparar_areas_por_unidad),
+                u"Validar Altura y Año Unidad": self.agregar_condicion_predio(df_validar_altura_y_anio_unidad),
             }
             
             df_fichas = pd.read_excel(excel_path, sheet_name='Fichas')
@@ -435,6 +436,18 @@ class GDBExcelValidator(Frame):
             for row_num, row in enumerate(df_comparar_areas_por_unidad.itertuples(index=False), 1):
                 for col_num, value in enumerate(row):
                     sheet_df_comparar_areas_por_unidad.write(row_num, col_num, str(value).decode('utf-8'))
+
+            
+            
+            for col_num, column in enumerate(df_validar_altura_y_anio_unidad.columns):
+                sheet_df_validar_altura_y_anio_unidad.write(0, col_num, column.decode('utf-8'), bold_style)
+
+            # Escribir datos
+            for row_num, row in enumerate(df_validar_altura_y_anio_unidad.itertuples(index=False), 1):
+                for col_num, value in enumerate(row):
+                    sheet_df_validar_altura_y_anio_unidad.write(row_num, col_num, str(value).decode('utf-8'))
+            
+                            
             """
             
             for col_num, column in enumerate(df_validar_anio_construccion.columns):
@@ -468,90 +481,27 @@ class GDBExcelValidator(Frame):
         except Exception as e:
             tkMessageBox.showerror("Error", "Fallo la validación de topología:\n{}".format(str(e)))
     
-    def validar_topologia(self, gdb_path, output_excel):
-        
-        arcpy.env.workspace = gdb_path
-        arcpy.env.overwriteOutput = True
+    def agregar_condicion_predio(self, df):
+        """
+        Agrega la columna CONDICION_PREDIO a cualquier DataFrame
+        que tenga TERRENO_CODIGO o Npn.
+        """
+        if df is None or df.empty:
+            return df
 
-        reglas = [
-            {"layer1": "Manzanas", "layer2": "Manzanas", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "r_lc_terreno", "layer2": "r_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "u_lc_terreno", "layer2": "u_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "Veredas", "layer2": "Veredas", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "Barrios", "layer2": "Barrios", "tipo": "intersect", "regla": "Must Not Overlap"},
-            {"layer1": "r_lc_terreno", "layer2": "Veredas", "tipo": "covered_by", "regla": "Must Be Covered By"},
-            {"layer1": "u_lc_terreno", "layer2": "Manzanas", "tipo": "covered_by", "regla": "Must Be Covered By"},
-            {"layer1": "Manzanas", "layer2": "u_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap With"},
-            {"layer1": "r_lc_terreno", "layer2": "u_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap With"},
-            {"layer1": "Manzanas", "layer2": "r_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap With"},
-            {"layer1": "Veredas", "layer2": "u_lc_terreno", "tipo": "intersect", "regla": "Must Not Overlap With"},
-        ]
+        df = df.copy()
 
-        resultados = {}
+        if 'TERRENO_CODIGO' in df.columns:
+            df['CONDICION_PREDIO'] = df['TERRENO_CODIGO'].apply(
+                lambda x: str(x)[21] if x and len(str(x)) >= 22 else ''
+            )
 
-        for regla in reglas:
-            lyr1 = regla["layer1"]
-            lyr2 = regla["layer2"]
-            tipo = regla["tipo"]
-            nombre_hoja = "{}_{}_{}".format(
-                lyr1, regla["regla"].replace(" ", "_"), lyr2 if lyr1 != lyr2 else "Interno"
-            )[:31]  # Límite de 31 caracteres
+        elif 'Npn' in df.columns:
+            df['CONDICION_PREDIO'] = df['Npn'].apply(
+                lambda x: str(x)[21] if x and len(str(x)) >= 22 else ''
+            )
 
-            try:
-                capa1 = os.path.join(gdb_path, lyr1)
-                capa2 = os.path.join(gdb_path, lyr2)
-
-                if not arcpy.Exists(capa1) or not arcpy.Exists(capa2):
-                    resultados[nombre_hoja] = pd.DataFrame([{
-                        "Error": "Capa faltante: {} o {}".format(lyr1, lyr2)
-                    }])
-                    continue
-
-                if tipo == "intersect":
-                    # Detectar traslapes
-                    temp_out = os.path.join("in_memory", "intersect_" + lyr1 + "_" + lyr2)
-                    arcpy.Intersect_analysis([capa1, capa2], temp_out, output_type="INPUT")
-                    arcpy.AddGeometryAttributes_management(temp_out, "AREA", Area_Unit="SQUARE_METERS")
-
-                    fields = ["FID_{}".format(lyr1), "FID_{}".format(lyr2), "POLY_AREA"]
-                    rows = []
-                    with arcpy.da.SearchCursor(temp_out, fields) as cursor:
-                        for row in cursor:
-                            if row[2] >= 1:  # Evitar ruidos menores
-                                rows.append({
-                                    "FID_{}".format(lyr1): row[0],
-                                    "FID_{}".format(lyr2): row[1],
-                                    "Area_m2": round(row[2], 2)
-                                })
-
-                    resultados[nombre_hoja] = pd.DataFrame(rows if rows else [{"Resultado": "Sin traslapes detectados"}])
-
-                elif tipo == "covered_by":
-                    # Validar cobertura
-                    arcpy.MakeFeatureLayer_management(capa2, "lyr_cobertura")  # Ej: Manzanas
-                    arcpy.MakeFeatureLayer_management(capa1, "lyr_objetivo")   # Ej: u_lc_terreno
-
-                    arcpy.SelectLayerByLocation_management(
-                        "lyr_objetivo", "ARE_IDENTICAL_TO", "lyr_cobertura", invert_spatial_relationship="INVERT"
-                    )
-
-                    ids = [row[0] for row in arcpy.da.SearchCursor("lyr_objetivo", ["OID@"])]
-                    resultados[nombre_hoja] = pd.DataFrame(
-                        ids if ids else [{"Resultado": "Todos cubiertos correctamente"}],
-                        columns=["OID_{}".format(lyr1)] if ids else None
-                    )
-
-            except Exception as e:
-                resultados[nombre_hoja] = pd.DataFrame([{"Error": str(e)}])
-
-        # Guardar archivo Excel compatible con Python 2.7
-        writer = pd.ExcelWriter(output_excel, engine='xlwt')
-        for hoja, df in resultados.items():
-            df.to_excel(writer, sheet_name=hoja, index=False)
-        writer.save()
-
-        tkMessageBox.showinfo("Validación completada", "Archivo guardado:\n{}".format(output_excel))
-
+        return df
     
 
     def calcular_areas_construidas(self):
@@ -942,7 +892,7 @@ class GDBExcelValidator(Frame):
         1) Calcula área total de cada informalidad
         2) Calcula área REAL de intersección (Intersect) con formales
         3) Resta: DIF = AREA_INFORMALIDAD - AREA_INTERSECCION
-        4) Retorna SOLO diferencias > 0.9
+        4) Retorna SOLO diferencias > 0.01
         """
 
         import os
@@ -2090,6 +2040,132 @@ class GDBExcelValidator(Frame):
 
         return df_out[['NPN_NRO_CONSTRUCCION', 'Area_GDB', 'Area_Excel', 'Diferencia']]
     
+    def validar_altura_y_anio_unidad(self, gdb_path):
+
+        import arcpy
+        import os
+        from datetime import datetime
+        import sys
+
+        try:
+            reload(sys)
+            sys.setdefaultencoding('utf-8')
+        except:
+            pass
+
+        errores = []
+        anio_actual = datetime.now().year
+
+        feature_class_name = "r_lc_unidadconstruccion" if self.tipo_area.get() == "Rural" else "u_lc_unidadconstruccion"
+        fc = os.path.join(gdb_path, feature_class_name)
+
+        print("validar_altura_y_anio_unidad")
+
+        if not arcpy.Exists(fc):
+            errores.append({
+                u'FeatureClass': feature_class_name,
+                u'OID': u'',
+                u'Campo': u'',
+                u'Valor': u'',
+                u'Descripcion': u'La capa no existe en la GDB'
+            })
+            return errores
+
+        campos = [f.name for f in arcpy.ListFields(fc)]
+
+        requeridos = ["ALTURA", "ANIO_CONSTRUCCION"]
+        faltantes = [c for c in requeridos if c not in campos]
+
+        if faltantes:
+            errores.append({
+                u'FeatureClass': feature_class_name,
+                u'OID': u'',
+                u'Campo': u', '.join(faltantes),
+                u'Valor': u'',
+                u'Descripcion': u'Campo(s) no existe(n) en la capa'
+            })
+            return errores
+
+        with arcpy.da.SearchCursor(fc, ["CODIGO_UNIDAD_CONSTRUCCION", "ALTURA", "ANIO_CONSTRUCCION"]) as cursor:
+            for row in cursor:
+
+                codigo_unidad = row[0]
+                altura = row[1]
+                anio = row[2]
+
+                if altura is None:
+                    errores.append({
+                        u'FeatureClass': feature_class_name,
+                        u'CODIGO_UNIDAD_CONSTRUCCION':(codigo_unidad),
+                        u'Campo': u'ALTURA',
+                        u'Valor': u'',
+                        u'Descripcion': u'ALTURA es nula'
+                    })
+                else:
+                    try:
+                        altura_val = float(altura)
+                        if altura_val <= 0:
+                            errores.append({
+                                u'FeatureClass': feature_class_name,
+                                u'CODIGO_UNIDAD_CONSTRUCCION': codigo_unidad,
+                                u'Campo': u'ALTURA',
+                                u'Valor': unicode(altura),
+                                u'Descripcion': u'ALTURA debe ser mayor a 0'
+                            })
+                    except:
+                        errores.append({
+                            u'FeatureClass': feature_class_name,
+                            u'CODIGO_UNIDAD_CONSTRUCCION': codigo_unidad,
+                            u'Campo': u'ALTURA',
+                            u'Valor': unicode(altura),
+                            u'Descripcion': u'ALTURA no es numérica'
+                        })
+
+                # =============================
+                # VALIDAR ANIO_CONSTRUCCION
+                # =============================
+                if anio is None:
+                    errores.append({
+                        u'FeatureClass': feature_class_name,
+                        u'CODIGO_UNIDAD_CONSTRUCCION': codigo_unidad,
+                        u'Campo': u'ANIO_CONSTRUCCION',
+                        u'Valor': u'',
+                        u'Descripcion': u'ANIO_CONSTRUCCION es nulo'
+                    })
+                    continue
+
+                try:
+                    anio_val = int(anio)
+                except:
+                    errores.append({
+                        u'FeatureClass': feature_class_name,
+                        u'CODIGO_UNIDAD_CONSTRUCCION': codigo_unidad,
+                        u'Campo': u'ANIO_CONSTRUCCION',
+                        u'Valor': unicode(anio),
+                        u'Descripcion': u'ANIO_CONSTRUCCION no es numérico'
+                    })
+                    continue
+
+                if len(str(anio_val)) != 4:
+                    errores.append({
+                        u'FeatureClass': feature_class_name,
+                        u'CODIGO_UNIDAD_CONSTRUCCION': codigo_unidad,
+                        u'Campo': u'ANIO_CONSTRUCCION',
+                        u'Valor': unicode(anio_val),
+                        u'Descripcion': u'ANIO_CONSTRUCCION no tiene 4 dígitos'
+                    })
+                    continue
+
+                if anio_val < 1800 or anio_val > anio_actual:
+                    errores.append({
+                        u'FeatureClass': feature_class_name,
+                        u'CODIGO_UNIDAD_CONSTRUCCION': codigo_unidad,
+                        u'Campo': u'ANIO_CONSTRUCCION',
+                        u'Valor': unicode(anio_val),
+                        u'Descripcion': u'ANIO_CONSTRUCCION fuera de rango lógico'
+                    })
+
+        return pd.DataFrame(errores)
     
     def verificar_geometrias_vacias(self,ruta_fc):
         """
@@ -2104,9 +2180,9 @@ class GDBExcelValidator(Frame):
                     contador_vacias += 1
 
         if contador_vacias == 0:
-            print("No hay geometrías vacías.")
+            print("No hay geometrias vacias.")
         else:
-            print("Total de geometrías vacías:", contador_vacias)
+            print("Total de geometrias vacias:", contador_vacias)
 
     def reporte(self, workbook, reportes_dict, gdb_path):
         import os
